@@ -728,6 +728,7 @@ $user_ip = getUserIP();
         <div class="menu-items">
             <a href="edit_profile.php" class="menu-item">编辑资料</a>
             <button class="menu-item" onclick="showAddFriendModal()">添加好友</button>
+            <button class="menu-item" onclick="showScanLoginModal()">扫码登录PC端</button>
             <a href="logout.php" class="menu-item menu-item-danger">退出登录</a>
         </div>
     </div>
@@ -835,6 +836,39 @@ $user_ip = getUserIP();
         </div>
     </div>
     
+    <!-- 扫码登录模态框 -->
+    <div class="modal" id="scan-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.9); z-index: 2000; flex-direction: column; align-items: center; justify-content: center;">
+        <div style="position: relative; width: 100%; max-width: 400px;">
+            <button onclick="closeScanModal()" style="position: absolute; top: -40px; right: 0; background: rgba(0, 0, 0, 0.5); color: white; border: none; border-radius: 50%; width: 30px; height: 30px; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                ×
+            </button>
+            <video id="qr-video" style="width: 100%; height: auto; border-radius: 8px;" playsinline></video>
+            <div id="scan-hint" style="color: white; text-align: center; margin-top: 20px; font-size: 16px;">请将二维码对准相机</div>
+        </div>
+    </div>
+    
+    <!-- 登录确认模态框 -->
+    <div class="modal" id="confirm-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 2000; flex-direction: column; align-items: center; justify-content: center;">
+        <div style="background: white; padding: 20px; border-radius: 12px; width: 90%; max-width: 400px; text-align: center;">
+            <h3 style="margin-bottom: 15px; color: #333;">确认登录</h3>
+            <p id="confirm-message" style="margin-bottom: 20px; color: #666; font-size: 14px;"></p>
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button onclick="rejectLogin()" style="padding: 10px 20px; background: #f5f5f5; color: #333; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; flex: 1;">取消</button>
+                <button onclick="confirmLogin()" style="padding: 10px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; flex: 1;">确认</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 登录成功提示 -->
+    <div class="modal" id="success-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 2000; flex-direction: column; align-items: center; justify-content: center;">
+        <div style="background: white; padding: 20px; border-radius: 12px; width: 90%; max-width: 300px; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 15px;">✅</div>
+            <h3 style="margin-bottom: 10px; color: #333;">登录成功</h3>
+            <p style="margin-bottom: 20px; color: #666; font-size: 14px;">已成功在PC端登录</p>
+            <button onclick="closeSuccessModal()" style="padding: 10px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">确定</button>
+        </div>
+    </div>
+    
     <script>
         // 切换菜单
         function toggleMenu() {
@@ -849,6 +883,242 @@ $user_ip = getUserIP();
             alert('添加好友功能开发中...');
             toggleMenu();
         }
+        
+        // 扫码登录相关变量
+        let scanner = null;
+        let currentScanUrl = '';
+        let currentQid = '';
+        let currentIpAddress = '';
+        
+        // 显示扫码登录模态框
+        function showScanLoginModal() {
+            toggleMenu(); // 关闭菜单
+            const modal = document.getElementById('scan-modal');
+            modal.style.display = 'flex';
+            initScanner();
+        }
+        
+        // 关闭扫码登录模态框
+        function closeScanModal() {
+            const modal = document.getElementById('scan-modal');
+            modal.style.display = 'none';
+            stopScanner();
+        }
+        
+        // 初始化扫码器
+        async function initScanner() {
+            try {
+                // 请求相机权限，优先使用前置相机
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'user',
+                        width: { ideal: 400 },
+                        height: { ideal: 400 }
+                    }
+                });
+                
+                const video = document.getElementById('qr-video');
+                video.srcObject = stream;
+                await video.play();
+                
+                // 等待视频加载完成后开始扫描
+                video.onloadeddata = () => {
+                    startScanning(video);
+                };
+            } catch (error) {
+                console.error('相机访问失败:', error);
+                const hint = document.getElementById('scan-hint');
+                hint.textContent = '相机访问失败，请检查权限设置';
+                hint.style.color = '#ff4757';
+            }
+        }
+        
+        // 开始扫描
+        function startScanning(video) {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            function scanFrame() {
+                if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    
+                    // 获取图像数据
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    
+                    // 使用ZXing库或其他方式解码二维码（这里使用简单的方式，实际项目中应使用专门的二维码库）
+                    // 这里我们使用一个简单的方法，通过canvas.toDataURL()传递给服务器解码
+                    // 但为了简化，我们假设前端可以直接解码
+                    // 实际项目中建议使用jsQR库等前端二维码解码库
+                    
+                    // 这里模拟二维码解码，实际项目中应替换为真实的解码逻辑
+                    // 由于浏览器限制，我们使用一个简单的方法来模拟
+                    
+                    // 注意：实际项目中，您应该引入一个二维码解码库，如jsQR
+                    // 这里我们使用一个简化的方式，直接读取URL参数
+                    
+                    // 假设我们已经解码出二维码内容
+                    // 这里我们使用一个定时器来模拟扫描过程
+                    
+                    // 实际项目中，您应该使用类似这样的代码：
+                    /*
+                    const code = jsQR(imageData.data, imageData.width, imageData.height);
+                    if (code) {
+                        handleScanResult(code.data);
+                    } else {
+                        requestAnimationFrame(scanFrame);
+                    }
+                    */
+                    
+                    // 简化版本：每500毫秒检查一次
+                    setTimeout(scanFrame, 500);
+                } else {
+                    requestAnimationFrame(scanFrame);
+                }
+            }
+            
+            scanFrame();
+        }
+        
+        // 停止扫描
+        function stopScanner() {
+            const video = document.getElementById('qr-video');
+            if (video.srcObject) {
+                const tracks = video.srcObject.getTracks();
+                tracks.forEach(track => track.stop());
+                video.srcObject = null;
+            }
+        }
+        
+        // 处理扫描结果（实际项目中应连接到二维码解码库）
+        function handleScanResult(result) {
+            if (!result) return;
+            
+            // 检查是否是本站的扫码登录链接
+            const domain = window.location.host;
+            if (result.includes(domain) && result.includes('scan_login.php')) {
+                // 解析URL获取qid
+                const url = new URL(result);
+                const qid = url.searchParams.get('qid');
+                
+                if (qid) {
+                    currentScanUrl = result;
+                    currentQid = qid;
+                    
+                    // 获取当前IP地址
+                    currentIpAddress = '<?php echo $user_ip; ?>';
+                    
+                    // 显示确认登录对话框
+                    showConfirmModal();
+                    
+                    // 停止扫描
+                    closeScanModal();
+                }
+            }
+        }
+        
+        // 显示确认登录模态框
+        function showConfirmModal() {
+            const modal = document.getElementById('confirm-modal');
+            const message = document.getElementById('confirm-message');
+            message.innerHTML = `确定要在PC网页端登录吗？<br><br>登录IP地址: <strong>${currentIpAddress}</strong>`;
+            modal.style.display = 'flex';
+        }
+        
+        // 确认登录
+        function confirmLogin() {
+            const modal = document.getElementById('confirm-modal');
+            modal.style.display = 'none';
+            
+            // 发送登录请求
+            sendLoginRequest();
+        }
+        
+        // 拒绝登录
+        function rejectLogin() {
+            const modal = document.getElementById('confirm-modal');
+            modal.style.display = 'none';
+        }
+        
+        // 发送登录请求
+        async function sendLoginRequest() {
+            try {
+                const response = await fetch('scan_login.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        'qid': currentQid,
+                        'username': '<?php echo $username; ?>',
+                        'source': 'mobilechat.php'
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // 显示登录成功提示
+                    showSuccessModal();
+                } else {
+                    alert(result.message || '登录失败');
+                }
+            } catch (error) {
+                console.error('发送登录请求失败:', error);
+                alert('登录失败，请稍后重试');
+            }
+        }
+        
+        // 显示登录成功提示
+        function showSuccessModal() {
+            const modal = document.getElementById('success-modal');
+            modal.style.display = 'flex';
+        }
+        
+        // 关闭登录成功提示
+        function closeSuccessModal() {
+            const modal = document.getElementById('success-modal');
+            modal.style.display = 'none';
+        }
+        
+        // 手动触发扫码结果（用于测试）
+        function testScanResult() {
+            const testUrl = window.location.origin + '/chat/scan_login.php?qid=test123';
+            handleScanResult(testUrl);
+        }
+        
+        // 添加jsQR库（实际项目中应在HTML头部引入）
+        // 这里我们动态添加jsQR库
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js';
+        script.onload = () => {
+            console.log('jsQR库加载完成');
+            // 重新定义startScanning函数，使用jsQR库
+            startScanning = function(video) {
+                function scanFrame() {
+                    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                        const code = jsQR(imageData.data, imageData.width, imageData.height);
+                        
+                        if (code) {
+                            handleScanResult(code.data);
+                        } else {
+                            requestAnimationFrame(scanFrame);
+                        }
+                    } else {
+                        requestAnimationFrame(scanFrame);
+                    }
+                }
+                scanFrame();
+            };
+        };
+        document.head.appendChild(script);
         
         // 好友选择
         document.querySelectorAll('.friend-item').forEach(item => {
