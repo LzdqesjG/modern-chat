@@ -16,6 +16,41 @@ if (!isset($_SESSION['user_id'])) {
 $user_id = $_SESSION['user_id'];
 $feedback = new Feedback($conn);
 
+// 检查feedback表是否存在
+$stmt = $conn->prepare("SHOW TABLES LIKE 'feedback'");
+$stmt->execute();
+$table_exists = $stmt->fetch();
+error_log('Feedback table exists: ' . ($table_exists ? 'Yes' : 'No'));
+
+// 如果表不存在，创建表
+if (!$table_exists) {
+    $create_table_sql = "
+    CREATE TABLE feedback (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        content TEXT NOT NULL,
+        image_path VARCHAR(255) DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        status ENUM('pending', 'received', 'fixed') DEFAULT 'pending',
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    ";
+    $conn->exec($create_table_sql);
+    error_log('Created feedback table');
+}
+
+// 检查是否有反馈数据
+$stmt = $conn->prepare("SELECT COUNT(*) as count FROM feedback");
+$stmt->execute();
+$count_result = $stmt->fetch(PDO::FETCH_ASSOC);
+error_log('Feedback count: ' . $count_result['count']);
+
+// 检查所有反馈数据
+$stmt = $conn->prepare("SELECT * FROM feedback");
+$stmt->execute();
+$all_feedbacks = $stmt->fetchAll(PDO::FETCH_ASSOC);
+error_log('All feedbacks: ' . print_r($all_feedbacks, true));
+
 // 处理反馈提交
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($_POST['action'] === 'submit_feedback') {
@@ -74,6 +109,9 @@ $is_admin = isset($_SESSION['is_admin']) && $_SESSION['is_admin'];
 // 如果是管理员，显示反馈管理页面
 if ($is_admin) {
     $feedbacks = $feedback->getAllFeedback();
+    // 添加调试信息
+    error_log('Number of feedbacks found: ' . count($feedbacks));
+    error_log('Feedbacks data: ' . print_r($feedbacks, true));
     include 'admin_feedback.php';
     exit;
 }
