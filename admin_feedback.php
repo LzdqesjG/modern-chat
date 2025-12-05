@@ -1,3 +1,9 @@
+<?php
+// 检查$feedbacks变量是否存在
+if (!isset($feedbacks)) {
+    die('错误：$feedbacks变量未定义！请通过feedback-2.php访问此页面。');
+}
+?>
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
