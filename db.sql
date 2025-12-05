@@ -139,6 +139,17 @@ CREATE TABLE IF NOT EXISTS forget_password_requests (
     FOREIGN KEY (admin_id) REFERENCES users(id)
 );
 
+-- 反馈表
+CREATE TABLE IF NOT EXISTS feedback (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    content TEXT NOT NULL,
+    image_path VARCHAR(255) DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status ENUM('pending', 'received', 'fixed') DEFAULT 'pending',
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 创建索引以提高查询性能
 CREATE INDEX idx_users_status ON users(status);
 CREATE INDEX idx_messages_sender_receiver ON messages(sender_id, receiver_id);
@@ -160,3 +171,6 @@ CREATE INDEX idx_group_members_user_id ON group_members(user_id);
 CREATE INDEX idx_group_messages_group_id ON group_messages(group_id);
 CREATE INDEX idx_group_messages_sender_id ON group_messages(sender_id);
 CREATE INDEX idx_group_messages_created_at ON group_messages(created_at);
+CREATE INDEX idx_feedback_user_id ON feedback(user_id);
+CREATE INDEX idx_feedback_status ON feedback(status);
+CREATE INDEX idx_feedback_created_at ON feedback(created_at);
