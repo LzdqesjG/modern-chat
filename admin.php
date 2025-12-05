@@ -901,7 +901,7 @@ if (isset($_POST['action']) && in_array($_POST['action'], [
             <div id="feedback" class="tab-content">
                 <h3>用户反馈</h3>
                 <div style="margin-bottom: 20px;">
-                    <button onclick="window.location.href='feedback-2.php'" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500;">
+                    <button onclick="window.location.href='admin_feedback.php'" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500;">
                         查看所有反馈
                     </button>
                 </div>
