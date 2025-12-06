@@ -1153,7 +1153,7 @@ if (isset($_POST['action']) && in_array($_POST['action'], [
         
         // 重置倒计时
         function resetCountdown() {
-            countdownTime = 4;
+            countdownTime = 3;
             const countdownEl = document.getElementById('countdown');
             countdownEl.textContent = countdownTime;
             
