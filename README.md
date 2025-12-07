@@ -39,13 +39,18 @@
 
 ```json
 {
-    "Create_a_group_chat_for_all_members": true, //你希望用户注册后自动创建一个群聊，群聊名称为所有用户的用户名拼接，例如：user1user2user3
-    "Restrict_registration": true, //你希望限制注册（如果配置了这个必须配置下面的Restrict_registration_ip的数量）
-    "Restrict_registration_ip": 3, //你希望一个IP地址最多注册几个账号
-    "ban_system": true, //是否启用封禁系统
-    "user_name_max": 12 //你希望最大设置的用户名长度
+    "Create_a_group_chat_for_all_members": true,
+    "Restrict_registration": true, 
+    "Restrict_registration_ip": 3, 
+    "ban_system": true, 
+    "user_name_max": 12 
 }
 ```
+Create_a_group_chat_for_all_members: 你希望用户注册后自动创建一个群聊，群聊名称为所有用户的用户名拼接，例如：user1user2user3
+Restrict_registration: 是否限制注册（如果配置了这个必须配置下面的Restrict_registration_ip的数量）
+Restrict_registration_ip: 你希望一个IP地址最多注册几个账号
+user_name_max: 你希望最大设置的用户名长度
+ban_system: 是否启用封禁系统
 
 请根据您的实际数据库配置修改这些值。
 
@@ -209,5 +214,3 @@ chmod 777 uploads/
 ## 许可证
 
 MIT License
-
-
