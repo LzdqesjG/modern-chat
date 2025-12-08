@@ -8,7 +8,8 @@
     "Restrict_registration": true,
     "Restrict_registration_ip": 3,
     "ban_system": true,
-    "user_name_max": 12
+    "user_name_max": 12,
+    "upload_files_max": 150
 }
 ```
 
@@ -21,3 +22,4 @@
  - `Restrict_registration_ip`: 同上, 指定限制数量
  - `ban_system`: 是否启用封禁系统
  - `user_name_max`: 你希望最大设置的用户名长度
+ - `upload_files_max`: 你希望用户最大可发送的文件大小
