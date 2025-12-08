@@ -1,8 +1,13 @@
 {
     "Create_a_group_chat_for_all_members": true,
-    "Restrict_registration": true,
-    "Restrict_registration_ip": 3,
-    "ban_system": true,
+    "Restrict_registration": true, 
+    "Restrict_registration_ip": 3, 
+    "ban_system": true, 
     "user_name_max": 12,
-    "upload_files_max": 150
+    "upload_files_max": 150,
+    "Session_Duration": 1,
+    "email_verify": false,
+    "email_verify_api": "https:\/\/api.nbhao.org\/v1\/email\/verify",
+    "email_verify_api_Request": "POST",
+    "email_verify_api_Verify_parameters": "message.result"
 }
