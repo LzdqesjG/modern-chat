@@ -46,12 +46,12 @@
     "user_name_max": 12 
 }
 ```
-`Create_a_group_chat_for_all_members`: 你希望用户注册后自动创建一个群聊，群聊名称为所有用户的用户名拼接，例如：user1user2user3
-`Restrict_registration`: 是否限制注册（如果配置了这个必须配置下面的Restrict_registration_ip的数量）
-`Restrict_registration_ip`: 你希望一个IP地址最多注册几个账号
-`user_name_max`: 你希望最大设置的用户名长度
-`ban_system`: 是否启用封禁系统
-`upload_files_max`: 你希望用户最大可发送的文件大小
+`Create_a_group_chat_for_all_members`: 你希望用户注册后自动创建一个群聊，群聊名称为所有用户的用户名拼接，例如：user1user2user3。
+`Restrict_registration`: 是否限制注册（如果配置了这个必须配置下面的Restrict_registration_ip的数量）。
+`Restrict_registration_ip`: 你希望一个IP地址最多注册几个账号。
+`user_name_max`: 你希望最大设置的用户名长度。
+`ban_system`: 是否启用封禁系统。
+`upload_files_max`: 你希望用户最大可发送的文件大小。
 请根据您的实际配置修改这些值。
 
 ## 安装步骤
