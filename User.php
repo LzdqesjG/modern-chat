@@ -198,10 +198,10 @@ class User {
             $expired_bans = $stmt->fetchAll();
             
             if (!empty($expired_bans)) {
-                // 更新已过期的封禁状态
+                // 删除已过期的封禁记录
                 $ban_ids = array_column($expired_bans, 'id');
                 $placeholders = rtrim(str_repeat('?,', count($ban_ids)), ',');
-                $stmt = $this->conn->prepare("UPDATE bans SET status = 'expired' WHERE id IN ($placeholders)");
+                $stmt = $this->conn->prepare("DELETE FROM bans WHERE id IN ($placeholders)");
                 $stmt->execute($ban_ids);
                 
                 // 记录封禁日志
@@ -225,7 +225,7 @@ class User {
      * @param int $user_id 用户ID
      * @param int $banned_by 封禁者ID
      * @param string $reason 封禁理由
-     * @param int $ban_duration 封禁时长（秒）
+     * @param int $ban_duration 封禁时长（小时）
      * @return bool 是否封禁成功
      */
     public function banUser($user_id, $banned_by, $reason, $ban_duration) {
@@ -236,15 +236,16 @@ class User {
                 return false;
             }
             
-            // 计算封禁结束时间
-            $ban_end = date('Y-m-d H:i:s', time() + $ban_duration);
+            // 将小时转换为秒，计算封禁结束时间
+            $ban_duration_seconds = $ban_duration * 3600; // 小时 * 3600秒/小时
+            $ban_end = date('Y-m-d H:i:s', time() + $ban_duration_seconds);
             
             // 开始事务
             $this->conn->beginTransaction();
             
-            // 插入封禁记录
+            // 插入封禁记录，存储秒数以便后续计算
             $stmt = $this->conn->prepare("INSERT INTO bans (user_id, banned_by, reason, ban_duration, ban_end) VALUES (?, ?, ?, ?, ?)");
-            $stmt->execute([$user_id, $banned_by, $reason, $ban_duration, $ban_end]);
+            $stmt->execute([$user_id, $banned_by, $reason, $ban_duration_seconds, $ban_end]);
             $ban_id = $this->conn->lastInsertId();
             
             // 记录封禁日志
@@ -323,6 +324,65 @@ class User {
         } catch(PDOException $e) {
             error_log("Get Ban History Error: " . $e->getMessage());
             return [];
+        }
+    }
+    
+    /**
+     * 检查用户是否同意了协议
+     * @param int $user_id 用户ID
+     * @return bool 是否同意协议
+     */
+    public function hasAgreedToTerms($user_id) {
+        try {
+            $stmt = $this->conn->prepare("SELECT agreed_to_terms FROM users WHERE id = ?");
+            $stmt->execute([$user_id]);
+            $user = $stmt->fetch();
+            return $user ? $user['agreed_to_terms'] : false;
+        } catch(PDOException $e) {
+            error_log("Check Terms Agreement Error: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * 更新用户协议同意状态
+     * @param int $user_id 用户ID
+     * @param bool $agreed 是否同意协议
+     * @return bool 是否更新成功
+     */
+    public function updateTermsAgreement($user_id, $agreed) {
+        try {
+            $stmt = $this->conn->prepare("UPDATE users SET agreed_to_terms = ? WHERE id = ?");
+            $stmt->execute([$agreed, $user_id]);
+            return true;
+        } catch(PDOException $e) {
+            error_log("Update Terms Agreement Error: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * 注销用户账号
+     * @param int $user_id 用户ID
+     * @return bool 是否注销成功
+     */
+    public function deleteUser($user_id) {
+        try {
+            // 开始事务
+            $this->conn->beginTransaction();
+            
+            // 更新用户为已删除状态
+            $stmt = $this->conn->prepare("UPDATE users SET is_deleted = TRUE, avatar = 'deleted_user', status = 'offline' WHERE id = ?");
+            $stmt->execute([$user_id]);
+            
+            // 提交事务
+            $this->conn->commit();
+            return true;
+        } catch(PDOException $e) {
+            // 回滚事务
+            $this->conn->rollBack();
+            error_log("Delete User Error: " . $e->getMessage());
+            return false;
         }
     }
 }

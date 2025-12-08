@@ -11,8 +11,14 @@ class Message {
     // 发送文本消息
     public function sendTextMessage($sender_id, $receiver_id, $content) {
         try {
-            // 过滤消息内容，移除所有HTML标签
-            $filtered_content = strip_tags($content);
+            // 检查消息内容是否包含HTML标签
+            if (preg_match('/<[^>]*>/', $content)) {
+                // 包含HTML标签，替换为"此消息无法被显示"
+                $filtered_content = "此消息无法被显示";
+            } else {
+                // 不包含HTML标签，直接使用
+                $filtered_content = $content;
+            }
             
             $stmt = $this->conn->prepare(
                 "INSERT INTO messages (sender_id, receiver_id, content, type, status) 
@@ -22,6 +28,7 @@ class Message {
             
             $message_id = $this->conn->lastInsertId();
             $this->updateSession($sender_id, $receiver_id, $message_id);
+            $this->updateUnreadMessageCount($receiver_id, $sender_id, $message_id);
             
             return ['success' => true, 'message_id' => $message_id];
         } catch(PDOException $e) {
@@ -41,11 +48,55 @@ class Message {
             
             $message_id = $this->conn->lastInsertId();
             $this->updateSession($sender_id, $receiver_id, $message_id);
+            $this->updateUnreadMessageCount($receiver_id, $sender_id, $message_id);
             
             return ['success' => true, 'message_id' => $message_id];
         } catch(PDOException $e) {
             error_log("Send File Message Error: " . $e->getMessage());
             return ['success' => false, 'message' => '文件发送失败'];
+        }
+    }
+    
+    /**
+     * 更新未读消息计数
+     * @param int $user_id 用户ID
+     * @param int $friend_id 好友ID
+     * @param int $message_id 消息ID
+     */
+    private function updateUnreadMessageCount($user_id, $friend_id, $message_id) {
+        try {
+            // 确保unread_messages表存在
+            $this->ensureTablesExist();
+            
+            // 更新未读消息计数
+            $stmt = $this->conn->prepare("INSERT INTO unread_messages (user_id, chat_type, chat_id, count, last_message_id) 
+                                         VALUES (?, 'friend', ?, 1, ?) 
+                                         ON DUPLICATE KEY UPDATE count = count + 1, last_message_id = ?");
+            $stmt->execute([$user_id, $friend_id, $message_id, $message_id]);
+        } catch (PDOException $e) {
+            error_log("Update unread message count error: " . $e->getMessage());
+        }
+    }
+    
+    /**
+     * 确保必要的表存在
+     */
+    private function ensureTablesExist() {
+        try {
+            // 创建unread_messages表来存储未读消息计数
+            $sql = "CREATE TABLE IF NOT EXISTS unread_messages (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                chat_type ENUM('friend', 'group') NOT NULL,
+                chat_id INT NOT NULL,
+                count INT DEFAULT 0,
+                last_message_id INT DEFAULT 0,
+                UNIQUE KEY unique_chat (user_id, chat_type, chat_id),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )";
+            $this->conn->exec($sql);
+        } catch (PDOException $e) {
+            error_log("Ensure tables exist error: " . $e->getMessage());
         }
     }
     

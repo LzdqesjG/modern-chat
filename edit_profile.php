@@ -92,6 +92,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // 重新获取用户信息
         $current_user = $user->getUserById($user_id);
     }
+    
+    // 处理密码修改
+    if (isset($_POST['current_password']) || isset($_POST['new_password']) || isset($_POST['confirm_password'])) {
+        // 检查是否所有密码字段都已填写
+        if (empty($_POST['current_password'])) {
+            $errors[] = '请输入原密码';
+        }
+        if (empty($_POST['new_password'])) {
+            $errors[] = '请输入新密码';
+        }
+        if (empty($_POST['confirm_password'])) {
+            $errors[] = '请再次输入新密码';
+        }
+        
+        if (empty($errors)) {
+            $current_password = $_POST['current_password'];
+            $new_password = $_POST['new_password'];
+            $confirm_password = $_POST['confirm_password'];
+            
+            // 验证原密码是否正确
+            if (!password_verify($current_password, $current_user['password'])) {
+                $errors[] = '原密码错误';
+            }
+            
+            // 验证新密码长度
+            if (strlen($new_password) < 6) {
+                $errors[] = '新密码长度必须至少6个字符';
+            }
+            
+            // 验证新密码和确认密码是否匹配
+            if ($new_password !== $confirm_password) {
+                $errors[] = '两次输入的新密码不匹配';
+            }
+            
+            if (empty($errors)) {
+                // 更新密码
+                $hashed_password = password_hash($new_password, PASSWORD_DEFAULT, ['cost' => 12]);
+                $stmt = $conn->prepare("UPDATE users SET password = ? WHERE id = ?");
+                $stmt->execute([$hashed_password, $user_id]);
+                
+                // 密码更新成功后，退出登录并跳转到登录页面
+                session_destroy();
+                header('Location: login.php?success=' . urlencode('密码修改成功，请重新登录'));
+                exit;
+            }
+        }
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -350,6 +397,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <img id="preview-avatar" src="" alt="预览" style="width: 32px; height: 32px; border: 1px solid #e0e0e0; border-radius: 50%; object-fit: cover;">
                         </div>
                     </div>
+                </div>
+            </div>
+            
+            <!-- 密码修改 -->
+            <div class="form-group" style="margin-top: 30px; border-top: 2px solid #f0f0f0; padding-top: 30px;">
+                <h3 style="margin-bottom: 20px; font-size: 18px; color: #333;">修改密码</h3>
+                
+                <div class="form-group">
+                    <label for="current_password">原密码</label>
+                    <input type="password" id="current_password" name="current_password" placeholder="请输入原密码">
+                </div>
+                
+                <div class="form-group">
+                    <label for="new_password">新密码</label>
+                    <input type="password" id="new_password" name="new_password" placeholder="请输入新密码" minlength="6">
+                </div>
+                
+                <div class="form-group">
+                    <label for="confirm_password">重复新密码</label>
+                    <input type="password" id="confirm_password" name="confirm_password" placeholder="请再次输入新密码" minlength="6">
                 </div>
             </div>
             

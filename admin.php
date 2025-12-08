@@ -22,7 +22,8 @@ require_once 'db.php';
 //     exit;
 // }
 
-// 确保is_admin字段存在并将第一个用户设置为管理员
+// 确保必要字段存在
+
 try {
     // 检查users表是否有is_admin字段
     $stmt = $conn->prepare("SHOW COLUMNS FROM users LIKE 'is_admin'");
@@ -35,11 +36,40 @@ try {
         error_log("Added is_admin column to users table");
     }
     
+    // 检查users表是否有is_deleted字段
+    $stmt = $conn->prepare("SHOW COLUMNS FROM users LIKE 'is_deleted'");
+    $stmt->execute();
+    $deleted_column_exists = $stmt->fetch();
+    
+    if (!$deleted_column_exists) {
+        // 添加is_deleted字段
+        $conn->exec("ALTER TABLE users ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE AFTER is_admin");
+        error_log("Added is_deleted column to users table");
+    }
+    
+    // 检查users表是否有agreed_to_terms字段
+    $stmt = $conn->prepare("SHOW COLUMNS FROM users LIKE 'agreed_to_terms'");
+    $stmt->execute();
+    $terms_column_exists = $stmt->fetch();
+    
+    if (!$terms_column_exists) {
+        // 添加agreed_to_terms字段，记录用户是否同意协议
+        $conn->exec("ALTER TABLE users ADD COLUMN agreed_to_terms BOOLEAN DEFAULT FALSE AFTER is_deleted");
+        error_log("Added agreed_to_terms column to users table");
+    }
+    
     // 将第一个用户设置为管理员
     $conn->exec("UPDATE users SET is_admin = TRUE WHERE id = 1");
     error_log("Set first user as admin");
+    
+    // 将管理员用户设置为已同意协议
+    $conn->exec("UPDATE users SET agreed_to_terms = TRUE WHERE is_admin = TRUE");
+    error_log("Set admin users as agreed to terms");
 } catch (PDOException $e) {
     error_log("Admin setup error: " . $e->getMessage());
+    echo "<div style='background: #ff4757; color: white; padding: 10px; border-radius: 5px; margin-bottom: 20px;'>";
+    echo "数据库初始化错误：" . $e->getMessage();
+    echo "</div>";
 }
 
 require_once 'User.php';
@@ -803,6 +833,97 @@ if (isset($_POST['action']) && in_array($_POST['action'], [
             border-color: #667eea;
             box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
         }
+        
+        /* 系统设置样式 */
+        .settings-container {
+            max-width: 800px;
+        }
+        
+        .settings-list {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .setting-item:last-child {
+            border-bottom: none;
+        }
+        
+        .setting-info {
+            flex: 1;
+        }
+        
+        .setting-info label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        
+        .setting-description {
+            font-size: 12px;
+            color: #666;
+            margin: 0;
+        }
+        
+        /* 切换开关样式 */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+        
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 24px;
+        }
+        
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        
+        input:checked + .toggle-slider {
+            background-color: #667eea;
+        }
+        
+        input:focus + .toggle-slider {
+            box-shadow: 0 0 1px #667eea;
+        }
+        
+        input:checked + .toggle-slider:before {
+            transform: translateX(26px);
+        }
     </style>
 </head>
 <body>
@@ -837,6 +958,7 @@ if (isset($_POST['action']) && in_array($_POST['action'], [
                 <button class="tab" onclick="openTab(event, 'clear_data')">清除数据</button>
                 <button class="tab" onclick="openTab(event, 'feedback')">反馈管理</button>
                 <button class="tab" onclick="openTab(event, 'forget_password')">忘记密码审核</button>
+                <button class="tab" onclick="openTab(event, 'system_settings')">系统设置</button>
             </div>
 
             <!-- 群聊管理 -->
@@ -1060,6 +1182,125 @@ if (isset($_POST['action']) && in_array($_POST['action'], [
                         echo '<p style="text-align: center; color: #ff4757; margin: 20px 0;">查询忘记密码申请失败</p>';
                     }
                     ?>
+                </div>
+            </div>
+            
+            <!-- 系统设置 -->
+            <div id="system_settings" class="tab-content">
+                <h3>系统设置</h3>
+                <div class="settings-container">
+                    <?php
+                    // 读取配置文件
+                    $config_file = 'config/config.json';
+                    $config_data = json_decode(file_get_contents($config_file), true);
+                    
+                    // 处理表单提交
+                    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_settings') {
+                        // 更新配置
+                        $updated_config = [];
+                        
+                        // 遍历配置项，更新值
+                        foreach ($config_data as $key => $value) {
+                            if (isset($_POST[$key])) {
+                                $new_value = $_POST[$key];
+                                // 根据原始值类型转换新值
+                                if (is_bool($value)) {
+                                    $updated_config[$key] = $new_value === 'true';
+                                } elseif (is_int($value)) {
+                                    $updated_config[$key] = intval($new_value);
+                                } else {
+                                    $updated_config[$key] = $new_value;
+                                }
+                            } else {
+                                // 如果是布尔值且未提交，设置为false
+                                if (is_bool($value)) {
+                                    $updated_config[$key] = false;
+                                } else {
+                                    $updated_config[$key] = $value;
+                                }
+                            }
+                        }
+                        
+                        // 保存更新后的配置
+                        file_put_contents($config_file, json_encode($updated_config, JSON_PRETTY_PRINT));
+                        
+                        // 显示成功消息
+                        echo '<div style="background: #4CAF50; color: white; padding: 10px; border-radius: 5px; margin-bottom: 20px;">';
+                        echo '设置已更新，请管理员重启网站服务后生效';
+                        echo '</div>';
+                        
+                        // 重新加载配置
+                        $config_data = $updated_config;
+                    }
+                    ?>
+                    
+                    <form method="POST" action="">
+                        <input type="hidden" name="action" value="update_settings">
+                        
+                        <div class="settings-list">
+                            <?php foreach ($config_data as $key => $value): ?>
+                                <div class="setting-item">
+                                    <div class="setting-info">
+                                        <label for="<?php echo $key; ?>">
+                                            <?php 
+                                            // 将配置键转换为更友好的名称
+                                            $friendly_name = str_replace('_', ' ', $key);
+                                            $friendly_name = ucwords($friendly_name);
+                                            echo $friendly_name;
+                                            ?>
+                                        </label>
+                                        <p class="setting-description"><?php 
+                                            // 添加配置项描述
+                                            switch ($key) {
+                                                case 'Create_a_group_chat_for_all_members':
+                                                    echo '是否为新用户自动创建全员群聊';
+                                                    break;
+                                                case 'Restrict_registration':
+                                                    echo '是否启用IP注册限制';
+                                                    break;
+                                                case 'Restrict_registration_ip':
+                                                    echo '每个IP地址允许注册的最大账号数';
+                                                    break;
+                                                case 'ban_system':
+                                                    echo '是否启用封禁系统';
+                                                    break;
+                                                case 'user_name_max':
+                                                    echo '用户名最大长度限制';
+                                                    break;
+                                                case 'upload_files_max':
+                                                    echo '最大允许上传文件大小（MB）';
+                                                    break;
+                                                default:
+                                                    echo '';
+                                            }
+                                            ?></p>
+                                    </div>
+                                    
+                                    <div class="setting-value">
+                                        <?php if (is_bool($value)): ?>
+                                            <!-- 布尔值使用复选框 -->
+                                            <label class="toggle-switch">
+                                                <input type="checkbox" name="<?php echo $key; ?>" value="true" <?php echo $value ? 'checked' : ''; ?>>
+                                                <span class="toggle-slider"></span>
+                                            </label>
+                                        <?php else: ?>
+                                            <!-- 其他类型使用输入框 -->
+                                            <input type="text" name="<?php echo $key; ?>" value="<?php echo $value; ?>" 
+                                                style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 100px;">
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        
+                        <button type="submit" class="btn" style="margin-top: 20px; padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            保存设置
+                        </button>
+                    </form>
+                    
+                    <div style="background: #ff9800; color: white; padding: 10px; border-radius: 5px; margin-top: 20px;">
+                        <strong>注意：</strong>修改设置前请确保不会影响用户的前提下重启网站服务才能生效
+                    </div>
                 </div>
             </div>
         </div>

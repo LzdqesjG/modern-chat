@@ -191,6 +191,12 @@ class Group {
             return ['success' => false, 'message' => '发送者不是群成员'];
         }
         
+        // 检查消息内容是否包含HTML标签
+        if (preg_match('/<[^>]*>/', $content)) {
+            // 包含HTML标签，替换为"此消息无法被显示"
+            $content = "此消息无法被显示";
+        }
+        
         $file_path = isset($file_info['file_path']) ? $file_info['file_path'] : null;
         $file_name = isset($file_info['file_name']) ? $file_info['file_name'] : null;
         $file_size = isset($file_info['file_size']) ? $file_info['file_size'] : null;
@@ -199,9 +205,127 @@ class Group {
         $stmt = $this->conn->prepare("INSERT INTO group_messages (group_id, sender_id, content, file_path, file_name, file_size, file_type) VALUES (?, ?, ?, ?, ?, ?, ?)");
         if ($stmt->execute([$group_id, $sender_id, $content, $file_path, $file_name, $file_size, $file_type])) {
             $message_id = $this->conn->lastInsertId();
+            
+            // 处理@提醒
+            if (!empty($content) && $content !== "此消息无法被显示") {
+                $mentioned_user_ids = [];
+                
+                // 检查是否@所有人
+                if (stripos($content, '@所有人') !== false || stripos($content, '@全体成员') !== false) {
+                    // 获取群成员列表（排除发送者自己）
+                    $stmt = $this->conn->prepare("SELECT user_id FROM group_members WHERE group_id = ? AND user_id != ?");
+                    $stmt->execute([$group_id, $sender_id]);
+                    $members = $stmt->fetchAll();
+                    
+                    foreach ($members as $member) {
+                        $mentioned_user_ids[] = $member['user_id'];
+                    }
+                } else {
+                    // 查找@用户名格式
+                    preg_match_all('/@([^\s]+)/', $content, $matches);
+                    if (!empty($matches[1])) {
+                        // 根据用户名获取用户ID
+                        $usernames = $matches[1];
+                        $placeholders = rtrim(str_repeat('?,', count($usernames)), ',');
+                        $stmt = $this->conn->prepare("SELECT id FROM users WHERE username IN ($placeholders)");
+                        $stmt->execute($usernames);
+                        $users = $stmt->fetchAll();
+                        
+                        foreach ($users as $user) {
+                            // 检查用户是否在群聊中
+                            $stmt = $this->conn->prepare("SELECT id FROM group_members WHERE group_id = ? AND user_id = ?");
+                            $stmt->execute([$group_id, $user['id']]);
+                            if ($stmt->fetch() && $user['id'] != $sender_id) {
+                                $mentioned_user_ids[] = $user['id'];
+                            }
+                        }
+                    }
+                }
+                
+                // 去重
+                $mentioned_user_ids = array_unique($mentioned_user_ids);
+                
+                // 插入@提醒
+                if (!empty($mentioned_user_ids)) {
+                    // 确保mentions表存在
+                    $this->ensureTablesExist();
+                    
+                    $stmt = $this->conn->prepare("INSERT INTO mentions (message_id, message_type, mentioned_user_id, sender_id) VALUES (?, 'group', ?, ?)");
+                    foreach ($mentioned_user_ids as $user_id) {
+                        $stmt->execute([$message_id, $user_id, $sender_id]);
+                    }
+                }
+            }
+            
+            // 更新未读消息计数
+            $this->updateUnreadMessageCount($group_id, $sender_id, $message_id);
+            
             return ['success' => true, 'message_id' => $message_id];
         }
         return ['success' => false, 'message' => '发送消息失败'];
+    }
+    
+    /**
+     * 确保必要的表存在
+     */
+    private function ensureTablesExist() {
+        try {
+            // 创建mentions表来存储@提醒
+            $sql = "CREATE TABLE IF NOT EXISTS mentions (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                message_id INT NOT NULL,
+                message_type ENUM('friend', 'group') NOT NULL,
+                mentioned_user_id INT NOT NULL,
+                sender_id INT NOT NULL,
+                is_read BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (mentioned_user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
+            )";
+            $this->conn->exec($sql);
+            
+            // 创建unread_messages表来存储未读消息计数
+            $sql = "CREATE TABLE IF NOT EXISTS unread_messages (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                chat_type ENUM('friend', 'group') NOT NULL,
+                chat_id INT NOT NULL,
+                count INT DEFAULT 0,
+                last_message_id INT DEFAULT 0,
+                UNIQUE KEY unique_chat (user_id, chat_type, chat_id),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )";
+            $this->conn->exec($sql);
+        } catch (PDOException $e) {
+            error_log("Ensure tables exist error: " . $e->getMessage());
+        }
+    }
+    
+    /**
+     * 更新未读消息计数
+     * @param int $group_id 群聊ID
+     * @param int $sender_id 发送者ID
+     * @param int $message_id 消息ID
+     */
+    private function updateUnreadMessageCount($group_id, $sender_id, $message_id) {
+        try {
+            // 获取所有群成员（排除发送者自己）
+            $stmt = $this->conn->prepare("SELECT user_id FROM group_members WHERE group_id = ? AND user_id != ?");
+            $stmt->execute([$group_id, $sender_id]);
+            $members = $stmt->fetchAll();
+            
+            foreach ($members as $member) {
+                $user_id = $member['user_id'];
+                
+                // 更新未读消息计数
+                $stmt = $this->conn->prepare("INSERT INTO unread_messages (user_id, chat_type, chat_id, count, last_message_id) 
+                                             VALUES (?, 'group', ?, 1, ?) 
+                                             ON DUPLICATE KEY UPDATE count = count + 1, last_message_id = ?");
+                $stmt->execute([$user_id, $group_id, $message_id, $message_id]);
+            }
+        } catch (PDOException $e) {
+            error_log("Update unread message count error: " . $e->getMessage());
+        }
     }
     
     /**
@@ -220,26 +344,19 @@ class Group {
             return [];
         }
         
-        // 对于获取新消息，使用created_at而不是id，确保按时间顺序获取
+        // 对于获取新消息，使用id直接比较，确保能获取到所有比last_message_id大的消息
         if ($last_message_id > 0) {
-            // 获取指定消息的创建时间
-            $stmt = $this->conn->prepare("SELECT created_at FROM group_messages WHERE id = ?");
-            $stmt->execute([$last_message_id]);
-            $last_message = $stmt->fetch();
-            
-            if ($last_message) {
-                $where_clause = "AND created_at > ?";
-                $stmt = $this->conn->prepare("SELECT gm.*, u.username, u.avatar FROM group_messages gm 
-                                             JOIN users u ON gm.sender_id = u.id 
-                                             WHERE gm.group_id = ? $where_clause 
-                                             ORDER BY gm.created_at ASC 
-                                             LIMIT ?");
-                $stmt->execute([$group_id, $last_message['created_at'], $limit]);
-                return $stmt->fetchAll();
-            }
+            // 使用id直接比较，确保能获取到所有比last_message_id大的消息
+            $stmt = $this->conn->prepare("SELECT gm.*, u.username, u.avatar FROM group_messages gm 
+                                         JOIN users u ON gm.sender_id = u.id 
+                                         WHERE gm.group_id = ? AND gm.id > ? 
+                                         ORDER BY gm.created_at ASC 
+                                         LIMIT ?");
+            $stmt->execute([$group_id, $last_message_id, $limit]);
+            return $stmt->fetchAll();
         }
         
-        // 如果没有last_message_id或获取失败，返回最新的消息
+        // 如果没有last_message_id，返回最新的消息
         $stmt = $this->conn->prepare("SELECT gm.*, u.username, u.avatar FROM group_messages gm 
                                      JOIN users u ON gm.sender_id = u.id 
                                      WHERE gm.group_id = ? 

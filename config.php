@@ -3,7 +3,7 @@
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'chat');
 define('DB_USER', 'root');
-define('DB_PASS', 'You_password');
+define('DB_PASS', 'cf211396ab9363ad');
 
 // 应用配置
 define('APP_NAME', 'Modern Chat');
