@@ -31,8 +31,8 @@ class Group {
             $group_id = $this->conn->lastInsertId();
             
             // 添加创建者为成员和群主
-            $stmt = $this->conn->prepare("INSERT INTO group_members (group_id, user_id, is_admin) VALUES (?, ?, ?)");
-            $stmt->execute([$group_id, $creator_id, true]);
+            $stmt = $this->conn->prepare("INSERT INTO group_members (group_id, user_id, role) VALUES (?, ?, ?)");
+            $stmt->execute([$group_id, $creator_id, 'admin']);
             
             // 添加其他成员
             foreach ($member_ids as $member_id) {
@@ -68,7 +68,7 @@ class Group {
      * @return array 成员列表
      */
     public function getGroupMembers($group_id) {
-        $stmt = $this->conn->prepare("SELECT u.*, gm.is_admin FROM users u 
+        $stmt = $this->conn->prepare("SELECT u.*, (gm.role = 'admin') as is_admin FROM users u 
                                      JOIN group_members gm ON u.id = gm.user_id 
                                      WHERE gm.group_id = ?");
         $stmt->execute([$group_id]);
@@ -119,7 +119,7 @@ class Group {
     public function setAdmin($group_id, $user_id, $is_admin = true) {
         // 检查管理员数量
         if ($is_admin) {
-            $stmt = $this->conn->prepare("SELECT COUNT(*) as count FROM group_members WHERE group_id = ? AND is_admin = 1");
+            $stmt = $this->conn->prepare("SELECT COUNT(*) as count FROM group_members WHERE group_id = ? AND role = 'admin'");
             $stmt->execute([$group_id]);
             $admin_count = $stmt->fetch()['count'];
             
@@ -129,8 +129,9 @@ class Group {
             }
         }
         
-        $stmt = $this->conn->prepare("UPDATE group_members SET is_admin = ? WHERE group_id = ? AND user_id = ?");
-        return $stmt->execute([$is_admin, $group_id, $user_id]);
+        $role = $is_admin ? 'admin' : 'member';
+        $stmt = $this->conn->prepare("UPDATE group_members SET role = ? WHERE group_id = ? AND user_id = ?");
+        return $stmt->execute([$role, $group_id, $user_id]);
     }
     
     /**
@@ -349,7 +350,7 @@ class Group {
         // 对于获取新消息，使用id直接比较，确保能获取到所有比last_message_id大的消息
         if ($last_message_id > 0) {
             // 使用id直接比较，确保能获取到所有比last_message_id大的消息
-            $stmt = $this->conn->prepare("SELECT gm.*, u.username, u.avatar FROM group_messages gm 
+            $stmt = $this->conn->prepare("SELECT gm.*, u.username as sender_username, u.avatar FROM group_messages gm 
                                          JOIN users u ON gm.sender_id = u.id 
                                          WHERE gm.group_id = ? AND gm.id > ? 
                                          ORDER BY gm.created_at ASC 
@@ -359,7 +360,7 @@ class Group {
         }
         
         // 如果没有last_message_id，返回最新的消息
-        $stmt = $this->conn->prepare("SELECT gm.*, u.username, u.avatar FROM group_messages gm 
+        $stmt = $this->conn->prepare("SELECT gm.*, u.username as sender_username, u.avatar FROM group_messages gm 
                                      JOIN users u ON gm.sender_id = u.id 
                                      WHERE gm.group_id = ? 
                                      ORDER BY gm.created_at ASC 
@@ -417,11 +418,11 @@ class Group {
                 $can_remove = true;
             } else {
                 // 检查是否是管理员或群主
-                $stmt = $this->conn->prepare("SELECT is_admin FROM group_members WHERE group_id = ? AND user_id = ?");
+                $stmt = $this->conn->prepare("SELECT role FROM group_members WHERE group_id = ? AND user_id = ?");
                 $stmt->execute([$message['group_id'], $user_id]);
                 $member = $stmt->fetch();
                 
-                $can_remove = $user_id == $message['owner_id'] || ($member && $member['is_admin']);
+                $can_remove = $user_id == $message['owner_id'] || ($member && $member['role'] == 'admin');
             }
             
             if ($can_remove) {
@@ -486,12 +487,41 @@ class Group {
      * @return array 群聊列表
      */
     public function getUserGroups($user_id) {
-        $stmt = $this->conn->prepare("SELECT g.*, gm.is_admin, (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) as member_count 
+        $stmt = $this->conn->prepare("SELECT g.*, (gm.role = 'admin') as is_admin, (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) as member_count 
                                      FROM groups g 
                                      JOIN group_members gm ON g.id = gm.group_id 
                                      WHERE gm.user_id = ?");
         $stmt->execute([$user_id]);
-        return $stmt->fetchAll();
+        $groups = $stmt->fetchAll();
+        
+        // 为每个群聊获取最新消息
+        foreach ($groups as &$group) {
+            // 获取该群聊的最新消息
+            $stmt = $this->conn->prepare(
+                "SELECT gm.content, gm.created_at, gm.sender_id, u.username as sender_username 
+                 FROM group_messages gm 
+                 JOIN users u ON gm.sender_id = u.id 
+                 WHERE gm.group_id = ? 
+                 ORDER BY gm.created_at DESC 
+                 LIMIT 1"
+            );
+            $stmt->execute([$group['id']]);
+            $last_message = $stmt->fetch();
+            
+            if ($last_message) {
+                $group['last_message'] = $last_message['content'];
+                $group['last_message_time'] = $last_message['created_at'];
+                $group['sender_username'] = $last_message['sender_username'];
+                $group['is_me'] = $last_message['sender_id'] == $user_id;
+            } else {
+                $group['last_message'] = '';
+                $group['last_message_time'] = '';
+                $group['sender_username'] = '';
+                $group['is_me'] = false;
+            }
+        }
+        
+        return $groups;
     }
     
     /**
@@ -501,7 +531,7 @@ class Group {
      * @return array|false 角色信息或false
      */
     public function getMemberRole($group_id, $user_id) {
-        $stmt = $this->conn->prepare("SELECT gm.is_admin, g.owner_id FROM group_members gm 
+        $stmt = $this->conn->prepare("SELECT (gm.role = 'admin') as is_admin, g.owner_id FROM group_members gm 
                                      JOIN groups g ON gm.group_id = g.id 
                                      WHERE gm.group_id = ? AND gm.user_id = ?");
         $stmt->execute([$group_id, $user_id]);
@@ -866,8 +896,8 @@ class Group {
             $group_id = $this->conn->lastInsertId();
             
             // 添加创建者为成员和群主
-            $stmt = $this->conn->prepare("INSERT INTO group_members (group_id, user_id, is_admin) VALUES (?, ?, ?)");
-            $stmt->execute([$group_id, $creator_id, true]);
+            $stmt = $this->conn->prepare("INSERT INTO group_members (group_id, user_id, role) VALUES (?, ?, ?)");
+            $stmt->execute([$group_id, $creator_id, 'admin']);
             
             // 获取所有用户
             $stmt = $this->conn->prepare("SELECT id FROM users WHERE id != ?");
