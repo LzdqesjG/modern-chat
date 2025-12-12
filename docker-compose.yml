@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  # PHP-FPM服务
+  app:
+    build: .
+    depends_on:
+      - db
+    environment:
+      - DB_HOST=db
+      - DB_NAME=chat
+      - DB_USER=root
+      - DB_PASS=${DB_PASSWORD:-rootpassword}
+    volumes:
+      - .:/var/www/html/
+    restart: always
+    networks:
+      - chat-network
+
+  # Nginx服务
+  nginx:
+    image: nginx:alpine
+    depends_on:
+      - app
+    ports:
+      - "${HTTP_PORT:-80}:80"    # HTTP端口，默认80
+      - "${HTTPS_PORT:-443}:443"  # HTTPS端口，默认443
+    volumes:
+      - .:/var/www/html/
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+    restart: always
+    networks:
+      - chat-network
+
+  # MySQL数据库服务
+  db:
+    image: mysql:5.7.44
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_PASSWORD:-rootpassword}
+      - MYSQL_DATABASE=chat
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./db.sql:/docker-entrypoint-initdb.d/01_init.sql
+    restart: always
+    networks:
+      - chat-network
+
+  # phpMyAdmin服务
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    depends_on:
+      - db
+    environment:
+      - PMA_HOST=db
+      - PMA_PORT=3306
+      - MYSQL_ROOT_PASSWORD=${DB_PASSWORD:-rootpassword}
+      - UPLOAD_LIMIT=100M
+    ports:
+      - "${PHPMYADMIN_PORT:-888}:80"  # phpMyAdmin端口，默认888
+    restart: always
+    networks:
+      - chat-network
+
+volumes:
+  db_data:
+    driver: local
+
+networks:
+  chat-network:
+    driver: bridge

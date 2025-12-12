@@ -88,116 +88,116 @@ if (!empty($errors)) {
 }
 
 // 检查是否启用邮箱验证
-    $email_verify = getConfig('email_verify', false);
+$email_verify = getConfig('email_verify', false);
 
-    if ($email_verify) {
-        // 判断邮箱是否为Gmail
-        $is_gmail = preg_match('/@gmail\.com$/i', $email);
+if ($email_verify) {
+    // 判断邮箱是否为Gmail
+    $is_gmail = preg_match('/@gmail\.com$/i', $email);
+    
+    if (!$is_gmail) {
+        // 非Gmail邮箱，使用API验证
+        $api_url = getConfig('email_verify_api', 'https://api.nbhao.org/v1/email/verify');
+        $request_method = strtoupper(getConfig('email_verify_api_Request', 'POST'));
+        $verify_param = getConfig('email_verify_api_Verify_parameters', 'result');
         
-        if (!$is_gmail) {
-            // 非Gmail邮箱，使用API验证
-            $api_url = getConfig('email_verify_api', 'https://api.nbhao.org/v1/email/verify');
-            $request_method = strtoupper(getConfig('email_verify_api_Request', 'POST'));
-            $verify_param = getConfig('email_verify_api_Verify_parameters', 'result');
-            
-            // 验证请求方法，只允许GET或POST
-            if (!in_array($request_method, ['GET', 'POST'])) {
-                // 请求方法无效，跳过邮箱验证
-                $email_verify = false;
-            }
-        
-        // 准备请求数据
-        $request_data = [
-            'email' => $email
-        ];
-        
-        // 初始化cURL
-        $ch = curl_init();
-        
-        // 设置cURL选项
-        curl_setopt($ch, CURLOPT_URL, $api_url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // 禁用SSL验证，根据实际情况调整
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false); // 禁用SSL主机验证，根据实际情况调整
-        
-        if ($request_method === 'POST') {
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($request_data));
+        // 验证请求方法，只允许GET或POST
+        if (!in_array($request_method, ['GET', 'POST'])) {
+            // 请求方法无效，跳过邮箱验证
+            $email_verify = false;
         } else {
-            // GET请求，将参数添加到URL
-            $api_url .= '?' . http_build_query($request_data);
-            curl_setopt($ch, CURLOPT_URL, $api_url);
-        }
-        
-        // 设置请求头
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/x-www-form-urlencoded',
-            'Accept: application/json'
-        ]);
-        
-        // 执行请求并获取响应
-        $response = curl_exec($ch);
-        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        
-        // 关闭cURL
-        curl_close($ch);
-        
-        if ($http_code === 200) {
-            // 解析响应
-            $response_data = json_decode($response, true);
+            // 准备请求数据
+            $request_data = [
+                'email' => $email
+            ];
             
-            if ($response_data) {
-                // 提取验证结果
-                $result_value = null;
+            // 初始化cURL
+            $ch = curl_init();
+            
+            // 设置cURL选项
+            curl_setopt($ch, CURLOPT_URL, $api_url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // 禁用SSL验证，根据实际情况调整
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false); // 禁用SSL主机验证，根据实际情况调整
+            
+            if ($request_method === 'POST') {
+                curl_setopt($ch, CURLOPT_POST, true);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($request_data));
+            } else {
+                // GET请求，将参数添加到URL
+                $api_url .= '?' . http_build_query($request_data);
+                curl_setopt($ch, CURLOPT_URL, $api_url);
+            }
+            
+            // 设置请求头
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/x-www-form-urlencoded',
+                'Accept: application/json'
+            ]);
+            
+            // 执行请求并获取响应
+            $response = curl_exec($ch);
+            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            
+            // 关闭cURL
+            curl_close($ch);
+            
+            if ($http_code === 200) {
+                // 解析响应
+                $response_data = json_decode($response, true);
                 
-                // 处理嵌套参数，如data.[0].result
-                $param_path = explode('.', $verify_param);
-                $temp_data = $response_data;
-                $param_valid = true;
-                
-                foreach ($param_path as $param_part) {
-                    // 处理数组索引，如[0]
-                    if (preg_match('/^(.*?)\[(\d+)\]$/', $param_part, $matches)) {
-                        $key = $matches[1];
-                        $index = (int)$matches[2];
-                        
-                        if (isset($temp_data[$key]) && is_array($temp_data[$key]) && isset($temp_data[$key][$index])) {
-                            $temp_data = $temp_data[$key][$index];
+                if ($response_data) {
+                    // 提取验证结果
+                    $result_value = null;
+                    
+                    // 处理嵌套参数，如data.[0].result
+                    $param_path = explode('.', $verify_param);
+                    $temp_data = $response_data;
+                    $param_valid = true;
+                    
+                    foreach ($param_path as $param_part) {
+                        // 处理数组索引，如[0]
+                        if (preg_match('/^(.*?)\[(\d+)\]$/', $param_part, $matches)) {
+                            $key = $matches[1];
+                            $index = (int)$matches[2];
+                            
+                            if (isset($temp_data[$key]) && is_array($temp_data[$key]) && isset($temp_data[$key][$index])) {
+                                $temp_data = $temp_data[$key][$index];
+                            } else {
+                                $param_valid = false;
+                                break;
+                            }
                         } else {
-                            $param_valid = false;
-                            break;
-                        }
-                    } else {
-                        // 普通键
-                        if (isset($temp_data[$param_part])) {
-                            $temp_data = $temp_data[$param_part];
-                        } else {
-                            $param_valid = false;
-                            break;
+                            // 普通键
+                            if (isset($temp_data[$param_part])) {
+                                $temp_data = $temp_data[$param_part];
+                            } else {
+                                $param_valid = false;
+                                break;
+                            }
                         }
                     }
-                }
-                
-                if ($param_valid) {
-                    $result_value = $temp_data;
-                }
-                
-                // 检查验证结果
-                if (strtolower($result_value) !== 'true' && strtolower($result_value) !== 'ok') {
+                    
+                    if ($param_valid) {
+                        $result_value = $temp_data;
+                    }
+                    
+                    // 检查验证结果
+                    if (strtolower($result_value) !== 'true' && strtolower($result_value) !== 'ok') {
+                        header("Location: register.php?error=" . urlencode("邮箱验证失败，请仔细填写"));
+                        exit;
+                    }
+                } else {
+                    // 无法解析响应
+                    error_log('邮箱验证API响应解析失败: ' . $response);
                     header("Location: register.php?error=" . urlencode("邮箱验证失败，请仔细填写"));
                     exit;
                 }
             } else {
-                // 无法解析响应
-                error_log('邮箱验证API响应解析失败: ' . $response);
+                // API请求失败
+                error_log('邮箱验证API请求失败，HTTP状态码: ' . $http_code);
                 header("Location: register.php?error=" . urlencode("邮箱验证失败，请仔细填写"));
                 exit;
             }
-        } else {
-            // API请求失败
-            error_log('邮箱验证API请求失败，HTTP状态码: ' . $http_code);
-            header("Location: register.php?error=" . urlencode("邮箱验证失败，请仔细填写"));
-            exit;
         }
     }
 }
