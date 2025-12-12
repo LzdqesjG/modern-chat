@@ -232,7 +232,7 @@ CREATE TABLE IF NOT EXISTS group_bans (
     status ENUM('active', 'expired', 'lifted') DEFAULT 'active',
     FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
     FOREIGN KEY (banned_by) REFERENCES users(id) ON DELETE CASCADE,
-    UNIQUE KEY unique_active_group_ban (group_id) WHERE (status = 'active')
+    UNIQUE KEY unique_active_group_ban (group_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 创建群聊封禁日志表
