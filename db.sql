@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS forget_password_requests (
     id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(50) NOT NULL,
     email VARCHAR(100) NOT NULL,
-    new_password VARCHAR(255) NOT NULL,
+    new_password VARCHAR(255) NOT NULL, -- 加密后的新密码
     status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     approved_at TIMESTAMP NULL,
@@ -153,19 +153,22 @@ CREATE TABLE IF NOT EXISTS feedback (
 -- 修改groups表，添加all_user_group字段
 ALTER TABLE groups ADD COLUMN all_user_group INT DEFAULT 0 AFTER owner_id;
 
+-- 创建索引以提高查询性能
+CREATE INDEX idx_groups_all_user_group ON groups(all_user_group);
+
 -- 创建封禁表
 CREATE TABLE IF NOT EXISTS bans (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
     banned_by INT NOT NULL,
     reason TEXT NOT NULL,
-    ban_duration INT NOT NULL,
+    ban_duration INT NOT NULL, -- 封禁时长（秒）
     ban_start TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     ban_end TIMESTAMP NULL,
     status ENUM('active', 'expired', 'lifted') DEFAULT 'active',
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (banned_by) REFERENCES users(id) ON DELETE CASCADE,
-    UNIQUE KEY unique_active_ban (user_id, status)
+    UNIQUE KEY unique_active_ban (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 创建封禁日志表
@@ -217,19 +220,19 @@ CREATE TABLE IF NOT EXISTS ip_registrations (
 -- 修改groups表，添加is_muted字段
 ALTER TABLE groups ADD COLUMN is_muted TINYINT(1) DEFAULT 0 AFTER all_user_group;
 
--- 创建群聊封禁表（修复后的版本）
+-- 创建群聊封禁表
 CREATE TABLE IF NOT EXISTS group_bans (
     id INT AUTO_INCREMENT PRIMARY KEY,
     group_id INT NOT NULL,
     banned_by INT NOT NULL,
     reason TEXT NOT NULL,
-    ban_duration INT NOT NULL,
+    ban_duration INT NOT NULL, -- 封禁时长（秒），0表示永久
     ban_start TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     ban_end TIMESTAMP NULL,
     status ENUM('active', 'expired', 'lifted') DEFAULT 'active',
     FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
     FOREIGN KEY (banned_by) REFERENCES users(id) ON DELETE CASCADE,
-    UNIQUE KEY unique_active_group_ban (group_id, status)
+    UNIQUE KEY unique_active_group_ban (group_id) WHERE (status = 'active')
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 创建群聊封禁日志表
@@ -244,12 +247,13 @@ CREATE TABLE IF NOT EXISTS group_ban_logs (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 创建索引以提高查询性能
-CREATE INDEX idx_groups_all_user_group ON groups(all_user_group);
 CREATE INDEX idx_group_bans_group_id ON group_bans(group_id);
 CREATE INDEX idx_group_bans_status ON group_bans(status);
 CREATE INDEX idx_group_bans_ban_end ON group_bans(ban_end);
 CREATE INDEX idx_group_ban_logs_ban_id ON group_ban_logs(ban_id);
 CREATE INDEX idx_group_ban_logs_action ON group_ban_logs(action);
+
+-- 创建索引以提高查询性能
 CREATE INDEX idx_users_status ON users(status);
 CREATE INDEX idx_messages_sender_receiver ON messages(sender_id, receiver_id);
 CREATE INDEX idx_messages_created_at ON messages(created_at);
