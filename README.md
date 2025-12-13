@@ -62,36 +62,38 @@
     "email_verify_api_Verify_parameters": "message.result"
 }
 ```
-- `Create_a_group_chat_for_all_members`: 你希望用户注册后自动创建一个群聊，群聊名称为所有用户的用户名拼接，例如：user1user2user3
-- `Restrict_registration`: 是否限制注册（如果配置了这个必须配置下面的Restrict_registration_ip的数量）
-- `Restrict_registration_ip`: 你希望一个IP地址最多注册几个账号
-- `user_name_max`: 你希望最大设置的用户名长度
-- `ban_system`: 是否启用封禁系统
-- `upload_files_max`: 你希望用户最大可发送的文件大小（MB）
-- `Session_Duration`: 用户会话时长（小时），默认1小时
-- `email_verify`: 是否启用邮箱验证
-- `email_verify_api`: 邮箱验证 API 地址
-- `email_verify_api_Request`: 邮箱验证 API 请求方法（GET 或 POST）
-- `email_verify_api_Verify_parameters`: 邮箱验证 API 返回结果参数名（例如："message.result"）
+`Create_a_group_chat_for_all_members`: 你希望用户注册后自动创建一个群聊，群聊名称为所有用户的用户名拼接，例如：user1user2user3
+`Restrict_registration`: 是否限制注册（如果配置了这个必须配置下面的Restrict_registration_ip的数量）
+`Restrict_registration_ip`: 你希望一个IP地址最多注册几个账号
+`user_name_max`: 你希望最大设置的用户名长度
+`ban_system`: 是否启用封禁系统
+`upload_files_max`: 你希望用户最大可发送的文件大小（MB）
+`Session_Duration`: 用户会话时长（小时），默认1小时
+`email_verify`: 是否启用邮箱验证
+`email_verify_api`: 邮箱验证 API 地址
+`email_verify_api_Request`: 邮箱验证 API 请求方法（GET 或 POST）
+`email_verify_api_Verify_parameters`: 邮箱验证 API 返回结果参数名（例如："message.result"）
 
 请根据您的实际配置修改这些值。
 
 ## 安装步骤
 
-### 1. 克隆或下载项目
+### 传统部署（Apache/Nginx + PHP + MySQL）
+
+#### 1. 克隆或下载项目
 
 将项目文件下载到您的 web 服务器目录中。
 
-### 2. 创建数据库
+#### 2. 创建数据库
 
 使用 MySQL 客户端执行 `db.sql` 文件来创建数据库和基础表：
 
 ```bash
 mysql -u root -p < db.sql
 ```
-或者在 phpMyAdmin 中导入 `db.sql` 文件。
+or 在 phpMyAdmin 中导入 `db.sql` 文件。
 
-### 3. 配置数据库连接
+#### 3. 配置数据库连接
 
 编辑 `config.php` 文件，配置您的数据库连接信息：
 
@@ -102,7 +104,7 @@ define('DB_USER', 'root');
 define('DB_PASS', 'your_password');
 ```
 
-### 4. 配置文件上传
+#### 4. 配置文件上传
 
 确保 `uploads/` 目录具有写入权限：
 
@@ -110,9 +112,78 @@ define('DB_PASS', 'your_password');
 chmod 777 uploads/
 ```
 
-### 5. 启动 web 服务器
+#### 5. 启动 web 服务器
 
 使用 Apache 或 Nginx 启动您的 web 服务器，然后访问项目目录。
+
+### Docker 部署
+
+#### 1. 克隆或下载项目
+
+将项目文件下载到您的服务器目录中。
+
+#### 2. 创建 .env 文件
+
+在项目根目录下创建 `.env` 文件，用于配置 Docker 部署的环境变量：
+
+```bash
+touch .env
+```
+
+编辑 `.env` 文件，添加以下配置（根据您的实际需求修改）：
+
+```dotenv
+# 数据库密码
+DB_PASSWORD=rootpassword
+
+# HTTP 端口，默认 80
+HTTP_PORT=80
+
+# HTTPS 端口，默认 443
+HTTPS_PORT=443
+
+# phpMyAdmin 端口，默认 888
+PHPMYADMIN_PORT=888
+```
+
+#### 3. 启动 Docker 容器
+
+在项目根目录下执行以下命令启动 Docker 容器：
+
+```bash
+docker-compose up -d
+```
+
+#### 4. 访问应用
+
+- 聊天系统：`http://your-server-ip:HTTP_PORT/chat`
+- phpMyAdmin：`http://your-server-ip:PHPMYADMIN_PORT`
+
+#### 5. 停止 Docker 容器
+
+在项目根目录下执行以下命令停止 Docker 容器：
+
+```bash
+docker-compose down
+```
+
+#### 6. 查看 Docker 容器状态
+
+```bash
+docker-compose ps
+```
+
+#### 7. 查看 Docker 容器日志
+
+```bash
+docker-compose logs
+```
+
+#### 8. 重启 Docker 容器
+
+```bash
+docker-compose restart
+```
 
 ## 使用说明
 
