@@ -506,7 +506,10 @@ class User {
     public function encryptMessage($message, $public_key) {
         try {
             $encrypted = "";
-            openssl_public_encrypt($message, $encrypted, $public_key);
+            if (!openssl_public_encrypt($message, $encrypted, $public_key)) {
+                error_log("Encrypt Message Error: openssl_public_encrypt failed");
+                return null;
+            }
             return base64_encode($encrypted);
         } catch(Exception $e) {
             error_log("Encrypt Message Error: " . $e->getMessage());

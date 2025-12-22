@@ -391,15 +391,36 @@ class User {
         // 创建密钥对
         $res = openssl_pkey_new($config);
         
+        if ($res === false) {
+            error_log("OpenSSL: Failed to generate new private key");
+            return false;
+        }
+        
         // 提取私钥
-        openssl_pkey_export($res, $private_key);
+        $success = openssl_pkey_export($res, $private_key);
+        
+        if (!$success) {
+            error_log("OpenSSL: Failed to export private key");
+            openssl_free_key($res);
+            return false;
+        }
         
         // 提取公钥
         $public_key = openssl_pkey_get_details($res);
-        $public_key = $public_key["key"];
+        
+        if ($public_key === false) {
+            error_log("OpenSSL: Failed to get public key details");
+            openssl_free_key($res);
+            return false;
+        }
+        
+        $public_key_pem = $public_key["key"];
+        
+        // 释放资源
+        openssl_free_key($res);
         
         return array(
-            "public_key" => $public_key,
+            "public_key" => $public_key_pem,
             "private_key" => $private_key
         );
     }
