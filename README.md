@@ -67,19 +67,21 @@
     "email_verify_api_Request": "POST",
     "email_verify_api_Verify_parameters": "message.result",
     "Random_song": false
-}```
-`Create_a_group_chat_for_all_members`: 你希望用户注册后自动创建一个群聊，群聊名称为所有用户的用户名拼接，例如：全员群聊-1.
-`Restrict_registration`: 是否限制注册（如果配置了这个必须配置下面的Restrict_registration_ip的数量）.
-`Restrict_registration_ip`: 你希望一个IP地址最多注册几个账号.
-`user_name_max`: 你希望最大设置的用户名长度.
-`ban_system`: 是否启用封禁系统.
-`upload_files_max`: 你希望用户最大可发送的文件大小（MB）.
-`Session_Duration`: 用户会话时长（小时），默认1小时.
-`email_verify`: 是否启用邮箱验证.
-`email_verify_api`: 邮箱验证 API 地址.
-`email_verify_api_Request`: 邮箱验证 API 请求方法（GET 或 POST）.
-`email_verify_api_Verify_parameters`: 邮箱验证 API 返回结果参数名（例如："message.result"）.
-`Random_song`: 是否启用随机播放歌曲功能，true为启用，false为禁用.
+}
+```
+
+-`Create_a_group_chat_for_all_members`: 你希望用户注册后自动创建一个群聊，群聊名称为所有用户的用户名拼接，例如：全员群聊-1.
+-`Restrict_registration`: 是否限制注册（如果配置了这个必须配置下面的Restrict_registration_ip的数量）.
+-`Restrict_registration_ip`: 你希望一个IP地址最多注册几个账号.
+-`user_name_max`: 你希望最大设置的用户名长度.
+-`ban_system`: 是否启用封禁系统.
+-`upload_files_max`: 你希望用户最大可发送的文件大小（MB）.
+-`Session_Duration`: 用户会话时长（小时），默认1小时.
+-`email_verify`: 是否启用邮箱验证.
+-`email_verify_api`: 邮箱验证 API 地址.
+-`email_verify_api_Request`: 邮箱验证 API 请求方法（GET 或 POST）.
+-`email_verify_api_Verify_parameters`: 邮箱验证 API 返回结果参数名（例如："message.result"）.
+-`Random_song`: 是否启用随机播放歌曲功能，true为启用，false为禁用.
 
 请根据您的实际配置修改这些值。
 
