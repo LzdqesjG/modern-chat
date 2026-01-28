@@ -509,6 +509,7 @@ docker-compose restart
 - Edge
 - via
 - 主流浏览器
+- 声明 : 请确保系统和浏览器支持网页功能否则将导致部分功能不可用，Windows：推荐使用Windows7 64位等以上版本系统 Linux：无限制 android：无限制 IOS：无限制
 ## 许可证
 
 MIT License
