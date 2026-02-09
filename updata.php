@@ -31,47 +31,80 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax']) && $_POST['aj
         
         // 检查old目录是否存在
         if (is_dir('old')) {
-            // 获取old目录中的所有文件
-            $oldFiles = scandir('old');
-            $rollbackCount = 0;
-            $rollbackFailed = 0;
-            $totalFiles = count($oldFiles) - 2; // 减去.和..
-            $currentFile = 0;
-            
-            foreach ($oldFiles as $oldFile) {
-                // 跳过.和..
-                if ($oldFile === '.' || $oldFile === '..') {
-                    continue;
+            try {
+                $rollbackCount = 0;
+                $rollbackFailed = 0;
+                
+                // 使用递归迭代器遍历old目录
+                $dirIterator = new RecursiveDirectoryIterator('old', RecursiveDirectoryIterator::SKIP_DOTS);
+                $iterator = new RecursiveIteratorIterator($dirIterator, RecursiveIteratorIterator::SELF_FIRST);
+                
+                // 先统计文件数量
+                $filesToRestore = [];
+                foreach ($iterator as $item) {
+                    if ($item->isFile()) {
+                        // 手动计算相对路径，避免兼容性问题
+                        // $item->getPathname() 返回 like 'old\dir\file.php'
+                        // 我们需要 'dir\file.php'
+                        $pathName = $item->getPathname();
+                        // 统一分隔符
+                        $pathName = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $pathName);
+                        $prefix = 'old' . DIRECTORY_SEPARATOR;
+                        
+                        $subPath = '';
+                        if (strpos($pathName, $prefix) === 0) {
+                            $subPath = substr($pathName, strlen($prefix));
+                        } else {
+                            // Fallback
+                            $subPath = $item->getFilename();
+                        }
+                        
+                        $filesToRestore[] = [
+                            'path' => $item->getPathname(),
+                            'subPath' => $subPath
+                        ];
+                    }
                 }
                 
-                $currentFile++;
-                $progress = round(($currentFile / $totalFiles) * 100);
-                $oldFilePath = 'old/' . $oldFile;
-                $newFilePath = $oldFile;
+                $totalFiles = count($filesToRestore);
+                $currentFile = 0;
                 
-                // 发送进度更新
-                echo "data: {\"status\": \"progress\", \"progress\": {$progress}, \"message\": \"恢复文件: {$oldFile}\"}\n\n";
-                flush();
-                usleep(50000); // 短暂延迟，让浏览器有时间处理
-                
-                // 恢复旧文件
-                if (file_exists($oldFilePath)) {
+                foreach ($filesToRestore as $fileInfo) {
+                    $currentFile++;
+                    $progress = $totalFiles > 0 ? round(($currentFile / $totalFiles) * 100) : 100;
+                    $oldFilePath = $fileInfo['path'];
+                    $newFilePath = $fileInfo['subPath'];
+                    
+                    // 发送进度更新
+                    echo "data: {\"status\": \"progress\", \"progress\": {$progress}, \"message\": \"恢复文件: {$newFilePath}\"}\n\n";
+                    flush();
+                    usleep(50000);
+                    
+                    // 确保目标目录存在
+                    $destDir = dirname($newFilePath);
+                    if ($destDir !== '.' && !is_dir($destDir)) {
+                        @mkdir($destDir, 0777, true);
+                    }
+                    
+                    // 恢复旧文件
                     if (copy($oldFilePath, $newFilePath)) {
                         $rollbackCount++;
                     } else {
                         $rollbackFailed++;
                     }
                 }
-            }
-            
-            if ($rollbackCount > 0) {
-                $successMsg = "成功撤销更新，恢复了 {$rollbackCount} 个文件";
-                if ($rollbackFailed > 0) {
-                    $successMsg .= "，失败 {$rollbackFailed} 个文件";
+                
+                if ($rollbackCount > 0) {
+                    $successMsg = "成功撤销更新，恢复了 {$rollbackCount} 个文件";
+                    if ($rollbackFailed > 0) {
+                        $successMsg .= "，失败 {$rollbackFailed} 个文件";
+                    }
+                    echo "data: {\"status\": \"complete\", \"success\": true, \"message\": \"{$successMsg}\"}\n\n";
+                } else {
+                    echo "data: {\"status\": \"complete\", \"success\": false, \"message\": \"撤销更新失败，没有可恢复的文件\"}\n\n";
                 }
-                echo "data: {\"status\": \"complete\", \"success\": true, \"message\": \"{$successMsg}\"}\n\n";
-            } else {
-                echo "data: {\"status\": \"complete\", \"success\": false, \"message\": \"撤销更新失败，没有可恢复的文件\"}\n\n";
+            } catch (Exception $e) {
+                echo "data: {\"status\": \"complete\", \"success\": false, \"message\": \"撤销更新出错: " . $e->getMessage() . "\"}\n\n";
             }
         } else {
             echo "data: {\"status\": \"complete\", \"success\": false, \"message\": \"撤销更新失败，没有找到备份文件\"}\n\n";
@@ -186,8 +219,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax']) && $_POST['aj
             
             // 只备份存在的文件
             if (file_exists($file)) {
+                // 确保old目录中对应的子目录存在
+                $destPath = 'old/' . $file;
+                $destDir = dirname($destPath);
+                if (!is_dir($destDir)) {
+                    if (!mkdir($destDir, 0777, true)) {
+                        $backupSuccess = false;
+                        echo "data: {\"status\": \"complete\", \"success\": false, \"message\": \"无法创建备份目录: {$destDir}\"}\n\n";
+                        flush();
+                        exit;
+                    }
+                }
+                
                 // 备份到old目录
-                if (!copy($file, 'old/' . $file)) {
+                if (!copy($file, $destPath)) {
                     $backupSuccess = false;
                     echo "data: {\"status\": \"complete\", \"success\": false, \"message\": \"无法备份文件: {$file}\"}\n\n";
                     flush();
@@ -218,6 +263,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax']) && $_POST['aj
             $fileContent = file_get_contents($fileUrl);
             
             if ($fileContent !== false) {
+                // 确保目标目录存在
+                $destDir = dirname($file);
+                if ($destDir !== '.' && !is_dir($destDir)) {
+                    if (!mkdir($destDir, 0777, true)) {
+                        $failedCount++;
+                        continue; // 无法创建目录，跳过此文件
+                    }
+                }
+                
                 // 保存文件
                 $result = file_put_contents($file, $fileContent);
                 if ($result !== false) {
