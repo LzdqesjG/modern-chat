@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS scan_login (
 );
 
 -- 群聊表
-CREATE TABLE IF NOT EXISTS groups (
+CREATE TABLE IF NOT EXISTS `groups` (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     description TEXT,
@@ -112,13 +112,13 @@ CREATE TABLE IF NOT EXISTS group_members (
     user_id INT NOT NULL,
     role ENUM('admin', 'member') DEFAULT 'member',
     joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (group_id) REFERENCES `groups`(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE KEY unique_group_member (group_id, user_id)
 );
 
 -- 更新全员群聊名称为世界大厅
-UPDATE groups SET name = REPLACE(name, '全员群聊', '世界大厅') WHERE all_user_group > 0;
+UPDATE `groups` SET name = REPLACE(name, '全员群聊', '世界大厅') WHERE all_user_group > 0;
 
 -- 群聊消息表
 CREATE TABLE IF NOT EXISTS group_messages (
@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS group_messages (
     file_size INT NULL,
     file_type VARCHAR(50) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (group_id) REFERENCES `groups`(id) ON DELETE CASCADE,
     FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -160,7 +160,7 @@ CREATE TABLE IF NOT EXISTS feedback (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 创建索引以提高查询性能
-CREATE INDEX idx_groups_all_user_group ON groups(all_user_group);
+CREATE INDEX idx_groups_all_user_group ON `groups`(all_user_group);
 
 -- 创建封禁表
 CREATE TABLE IF NOT EXISTS bans (
@@ -196,7 +196,7 @@ CREATE TABLE IF NOT EXISTS group_invitations (
     invitee_id INT NOT NULL,
     status ENUM('pending', 'accepted', 'rejected', 'expired') DEFAULT 'pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (group_id) REFERENCES `groups`(id) ON DELETE CASCADE,
     FOREIGN KEY (inviter_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (invitee_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE KEY unique_invitation (group_id, inviter_id, invitee_id, status)
@@ -256,7 +256,7 @@ CREATE TABLE IF NOT EXISTS group_join_requests (
     user_id INT NOT NULL,
     status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (group_id) REFERENCES `groups`(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE KEY unique_join_request (group_id, user_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -271,7 +271,7 @@ CREATE TABLE IF NOT EXISTS ip_registrations (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 修改groups表，添加is_muted字段
-ALTER TABLE groups ADD COLUMN is_muted TINYINT(1) DEFAULT 0 AFTER all_user_group;
+ALTER TABLE `groups` ADD COLUMN is_muted TINYINT(1) DEFAULT 0 AFTER all_user_group;
 
 -- 创建群聊封禁表
 CREATE TABLE IF NOT EXISTS group_bans (
@@ -283,7 +283,7 @@ CREATE TABLE IF NOT EXISTS group_bans (
     ban_start TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     ban_end TIMESTAMP NULL,
     status ENUM('active', 'expired', 'lifted') DEFAULT 'active',
-    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (group_id) REFERENCES `groups`(id) ON DELETE CASCADE,
     FOREIGN KEY (banned_by) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE KEY unique_active_group_ban (group_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -395,8 +395,8 @@ CREATE INDEX idx_scan_login_token_expire_at ON scan_login(token_expire_at);
 CREATE INDEX idx_forget_password_username ON forget_password_requests(username);
 CREATE INDEX idx_forget_password_status ON forget_password_requests(status);
 CREATE INDEX idx_forget_password_created_at ON forget_password_requests(created_at);
-CREATE INDEX idx_groups_creator_id ON groups(creator_id);
-CREATE INDEX idx_groups_owner_id ON groups(owner_id);
+CREATE INDEX idx_groups_creator_id ON `groups`(creator_id);
+CREATE INDEX idx_groups_owner_id ON `groups`(owner_id);
 CREATE INDEX idx_group_members_group_id ON group_members(group_id);
 CREATE INDEX idx_group_members_user_id ON group_members(user_id);
 CREATE INDEX idx_group_messages_group_id ON group_messages(group_id);

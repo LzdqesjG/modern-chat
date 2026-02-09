@@ -12,8 +12,8 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Microsoft YaHei', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -24,11 +24,12 @@
         .install-container {
             background: white;
             border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
             max-width: 900px;
             width: 100%;
             overflow: hidden;
             animation: slideIn 0.5s ease;
+            border: 2px solid transparent;
         }
 
         @keyframes slideIn {
@@ -43,21 +44,23 @@
         }
 
         .install-header {
-            background: linear-gradient(135deg, #12b7f5 0%, #00a2e8 100%);
-            padding: 40px;
+            background: transparent;
+            padding: 40px 40px 20px 40px;
             text-align: center;
-            color: white;
+            color: #333;
         }
 
         .install-header h1 {
             font-size: 2.5em;
             margin-bottom: 10px;
             font-weight: 600;
+            color: #333;
         }
 
         .install-header p {
             font-size: 1.1em;
-            opacity: 0.9;
+            color: #666;
+            opacity: 1;
         }
 
         .install-body {
@@ -529,6 +532,49 @@
                 width: 100%;
             }
         }
+
+        /* 进度条样式 */
+        .progress-container {
+            margin-top: 20px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            height: 24px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(135deg, #12b7f5 0%, #00a2e8 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+        
+        .progress-bar.animated {
+            background-size: 40px 40px;
+            background-image: linear-gradient(45deg, rgba(255, 255, 255, .15) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, .15) 50%, rgba(255, 255, 255, .15) 75%, transparent 75%, transparent);
+            animation: progress-stripes 1s linear infinite;
+        }
+        
+        @keyframes progress-stripes {
+            from { background-position: 40px 0; }
+            to { background-position: 0 0; }
+        }
+
+        .progress-text {
+            text-align: center;
+            margin-top: 8px;
+            font-size: 13px;
+            color: #666;
+        }
     </style>
 </head>
 <body>
@@ -609,27 +655,32 @@
                         <input type="text" id="db-host" name="host" value="localhost" placeholder="例如: localhost">
                         <div class="hint">如果数据库和网站在同一台服务器上，通常填写 localhost 或 127.0.0.1</div>
                     </div>
+                    <!-- 隐藏的默认配置 -->
+                    <input type="hidden" id="db-name" name="database" value="chat">
+                    <input type="hidden" id="db-user" name="username" value="root">
+
                     <div class="form-row">
+                        <div class="form-group">
+                            <label for="db-pass" style="display: flex; align-items: center; gap: 8px;">
+                                数据库root密码 
+                                <a href="help/index.php" target="_blank" style="text-decoration: none; color: #12b7f5; font-size: 18px;" title="点击查看帮助">ℹ</a>
+                            </label>
+                            <input type="password" id="db-pass" name="password" placeholder="请输入密码">
+                        </div>
                         <div class="form-group">
                             <label for="db-port">端口</label>
                             <input type="number" id="db-port" name="port" value="3306" placeholder="例如: 3306">
                         </div>
-                        <div class="form-group">
-                            <label for="db-name">数据库名称</label>
-                            <input type="text" id="db-name" name="database" placeholder="例如: chat">
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="db-user">数据库用户名</label>
-                            <input type="text" id="db-user" name="username" placeholder="例如: root">
-                        </div>
-                        <div class="form-group">
-                            <label for="db-pass">数据库密码</label>
-                            <input type="password" id="db-pass" name="password" placeholder="请输入密码">
-                        </div>
                     </div>
                 </form>
+                
+                <!-- 进度条 -->
+                <div id="install-progress-wrapper" style="display: none;">
+                    <div class="progress-container">
+                        <div id="install-progress-bar" class="progress-bar animated" style="width: 0%">0%</div>
+                    </div>
+                    <div id="install-progress-text" class="progress-text">准备开始安装...</div>
+                </div>
             </div>
 
             <!-- 步骤4: 完成安装 -->
@@ -671,6 +722,33 @@
         // 环境检测结果
         let envCheckPassed = false;
         let dbConfig = {};
+        
+        // 进度条控制
+        let progressTimer = null;
+        const progressWrapper = document.getElementById('install-progress-wrapper');
+        const progressBar = document.getElementById('install-progress-bar');
+        const progressText = document.getElementById('install-progress-text');
+        
+        function updateProgress(percent, text) {
+            progressBar.style.width = `${percent}%`;
+            progressBar.textContent = `${Math.round(percent)}%`;
+            if (text) progressText.textContent = text;
+        }
+        
+        function startProgressSimulation(start, end, duration) {
+            if (progressTimer) clearInterval(progressTimer);
+            let current = start;
+            const step = (end - start) / (duration / 100);
+            
+            progressTimer = setInterval(() => {
+                current += step;
+                if (current >= end) {
+                    current = end;
+                    clearInterval(progressTimer);
+                }
+                updateProgress(current);
+            }, 100);
+        }
 
         // 获取DOM元素
         const alertBox = document.getElementById('alert-box');
@@ -863,6 +941,10 @@
             dbConfig = { host, port, database, username, password };
             nextBtn.disabled = true;
             nextBtn.innerHTML = '<span class="loading"></span> 安装中...';
+            
+            // 显示进度条
+            progressWrapper.style.display = 'block';
+            updateProgress(0, '正在连接数据库...');
 
             // 先测试连接
             testDatabase();
@@ -871,6 +953,8 @@
         // 测试数据库连接
         function testDatabase() {
             const formData = new URLSearchParams(dbConfig);
+            
+            updateProgress(10, '正在连接数据库...');
 
             fetch('install/install_api.php?action=test_db', {
                 method: 'POST',
@@ -882,15 +966,18 @@
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    showAlert('success', '数据库连接成功，正在导入数据...');
+                    updateProgress(30, '数据库连接成功，准备导入数据...');
+                    // showAlert('success', '数据库连接成功，正在导入数据...'); // 隐藏原来的提示，用进度条代替
                     importDatabase();
                 } else {
+                    progressWrapper.style.display = 'none';
                     showAlert('error', data.message);
                     nextBtn.disabled = false;
                     nextBtn.textContent = '开始安装 →';
                 }
             })
             .catch(err => {
+                progressWrapper.style.display = 'none';
                 showAlert('error', '数据库连接失败: ' + err.message);
                 nextBtn.disabled = false;
                 nextBtn.textContent = '开始安装 →';
@@ -901,6 +988,10 @@
         function importDatabase() {
             const formData = new URLSearchParams(dbConfig);
             formData.append('overwrite', 'false');
+            
+            updateProgress(35, '正在导入数据表结构和初始数据...');
+            // 模拟进度从35%走到90%，持续5秒
+            startProgressSimulation(35, 90, 5000);
 
             fetch('install/install_api.php?action=import_db', {
                 method: 'POST',
@@ -911,13 +1002,27 @@
             })
             .then(res => res.json())
             .then(data => {
+                if (progressTimer) clearInterval(progressTimer);
+                
                 if (data.success) {
+                    // 保存管理员信息
+                    if (data.data && data.data.admin_created) {
+                        window.adminInfo = {
+                            email: data.data.admin_email,
+                            password: data.data.admin_password
+                        };
+                    }
+                    
+                    updateProgress(95, '数据库导入成功，正在完成安装...');
                     completeInstall();
                 } else {
                     // 检查是否是数据冲突
                     if (data.data && data.data.conflict) {
                         if (confirm(data.data.message)) {
                             // 用户确认覆盖
+                            updateProgress(35, '正在清空旧数据并重新导入...');
+                            startProgressSimulation(35, 90, 5000);
+                            
                             const formData2 = new URLSearchParams(dbConfig);
                             formData2.append('overwrite', 'true');
 
@@ -929,12 +1034,14 @@
                                 body: formData2
                             }).then(res => res.json());
                         } else {
+                            progressWrapper.style.display = 'none';
                             showAlert('warning', '已取消导入，请修改数据库名称后重试');
                             nextBtn.disabled = false;
                             nextBtn.textContent = '开始安装 →';
                             return { success: false };
                         }
                     } else {
+                        progressWrapper.style.display = 'none';
                         showAlert('error', data.message);
                         nextBtn.disabled = false;
                         nextBtn.textContent = '开始安装 →';
@@ -943,10 +1050,33 @@
             })
             .then(data => {
                 if (data && data.success) {
+                    if (progressTimer) clearInterval(progressTimer);
+                    
+                     // 确保在第二次成功回调中也保存管理员信息
+                    if (data.data && data.data.admin_created) {
+                        window.adminInfo = {
+                            email: data.data.admin_email,
+                            password: data.data.admin_password
+                        };
+                    }
+                    
+                    updateProgress(95, '数据库导入成功，正在完成安装...');
                     completeInstall();
+                } else if (data && !data.success && !data.data) {
+                     // 这里的逻辑有点绕，主要是处理第二次fetch的结果
+                     // 如果第二次fetch失败（比如覆盖导入也失败），已经在上面或者下面的catch里处理了？
+                     // 不，第二次fetch返回json后，会进入这个then
+                     if (data.message) { // 只有出错时会有message
+                         progressWrapper.style.display = 'none';
+                         showAlert('error', data.message);
+                         nextBtn.disabled = false;
+                         nextBtn.textContent = '开始安装 →';
+                     }
                 }
             })
             .catch(err => {
+                if (progressTimer) clearInterval(progressTimer);
+                progressWrapper.style.display = 'none';
                 showAlert('error', '数据库导入失败: ' + err.message);
                 nextBtn.disabled = false;
                 nextBtn.textContent = '开始安装 →';
@@ -961,15 +1091,73 @@
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    showAlert('success', '安装完成！');
-                    showStep(4);
+                    updateProgress(100, '安装完成！');
+                    setTimeout(() => {
+                        showAlert('success', '安装完成！');
+                        showStep(4);
+                        
+                        // 构建管理员信息HTML
+                        let adminInfoHtml = '';
+                        // 强制检查 window.adminInfo 是否存在
+                        if (window.adminInfo && window.adminInfo.email && window.adminInfo.password) {
+                            adminInfoHtml = `
+                            <div style="background: #f6ffed; border: 1px solid #b7eb8f; padding: 20px; border-radius: 10px; margin: 25px 0; text-align: left;">
+                                <h3 style="color: #52c41a; margin-bottom: 15px; font-size: 16px; display: flex; align-items: center; gap: 8px;">
+                                    <span style="font-size: 20px;">🛡️</span> 为了您的服务器安全已自动创建Admin用户
+                                </h3>
+                                <div style="background: rgba(255,255,255,0.6); padding: 15px; border-radius: 6px;">
+                                    <p style="color: #666; margin-bottom: 8px; font-family: monospace; font-size: 14px;">
+                                        账号：<strong style="color: #333;">${window.adminInfo.email}</strong>
+                                    </p>
+                                    <p style="color: #666; margin-bottom: 0; font-family: monospace; font-size: 14px;">
+                                        密码：<strong style="color: #ff4d4f; font-size: 18px; letter-spacing: 1px;">${window.adminInfo.password}</strong>
+                                    </p>
+                                </div>
+                                <p style="color: #888; font-size: 13px; margin-top: 15px; display: flex; align-items: center; gap: 5px;">
+                                    <span>💡</span> 您可以使用此账号直接登录无需注册，请妥善保存密码！
+                                </p>
+                            </div>`;
+                        } else {
+                            // 如果因为某种原因没有获取到密码，显示默认提示
+                             adminInfoHtml = `
+                            <div style="background: #fffbe6; border: 1px solid #ffe58f; padding: 20px; border-radius: 10px; margin: 25px 0; text-align: left;">
+                                <h3 style="color: #faad14; margin-bottom: 15px; font-size: 16px;">
+                                    ⚠️ 管理员账号提示
+                                </h3>
+                                <p style="color: #666; font-size: 14px;">
+                                    系统尝试为您创建了管理员账号：<strong>admin@admin.com.cn</strong>
+                                </p>
+                                <p style="color: #666; font-size: 14px; margin-top: 5px;">
+                                    但由于网络或状态原因未能获取到随机密码。
+                                </p>
+                                <p style="color: #666; font-size: 14px; margin-top: 5px;">
+                                    请检查数据库 <code>users</code> 表，或使用注册功能注册新账号（第一个注册的用户通常会自动获得管理员权限）。
+                                </p>
+                            </div>`;
+                        }
+
+                        // 显示安装完成提示
+                        document.body.innerHTML = `
+                        <div style="text-align: center; background: white; padding: 40px; border-radius: 20px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15); max-width: 600px; width: 100%; margin: 20px;">
+                            <div style="font-size: 60px; color: #52c41a; margin-bottom: 20px;">✓</div>
+                            <h1 style="color: #333; margin-bottom: 10px;">安装完成</h1>
+                            <p style="color: #666; font-size: 16px;">此页面已被清除，系统已准备就绪。</p>
+                            ${adminInfoHtml}
+                            <a href="login.php" style="display: inline-block; margin-top: 10px; padding: 12px 30px; background: linear-gradient(135deg, #12b7f5 0%, #00a2e8 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; box-shadow: 0 4px 15px rgba(18, 183, 245, 0.3); transition: all 0.3s;">进入系统</a>
+                        </div>`;
+                        
+                        // 发送请求删除安装文件
+                        fetch('install/delete_install_files.php');
+                    }, 500);
                 } else {
+                    progressWrapper.style.display = 'none';
                     showAlert('error', data.message);
                     nextBtn.disabled = false;
                     nextBtn.textContent = '开始安装 →';
                 }
             })
             .catch(err => {
+                progressWrapper.style.display = 'none';
                 showAlert('error', '安装失败: ' + err.message);
                 nextBtn.disabled = false;
                 nextBtn.textContent = '开始安装 →';
