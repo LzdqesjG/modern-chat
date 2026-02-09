@@ -14,7 +14,7 @@ class InstallEnvironment {
 
         // 检查PHP版本
         $phpVersion = PHP_VERSION;
-        $minVersion = '7.4.0';
+        $minVersion = '5.5.0'; // 修改为5.5.0
         $checks['php_version'] = [
             'name' => 'PHP版本',
             'current' => $phpVersion,

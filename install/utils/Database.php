@@ -51,6 +51,27 @@ class InstallDatabase {
     }
 
     /**
+     * 修改数据库用户密码
+     */
+    public function changeUserPassword($username, $host, $newPassword) {
+        try {
+            // 尝试使用 ALTER USER (MySQL 5.7.6+)
+            $this->pdo->exec("ALTER USER '{$username}'@'{$host}' IDENTIFIED BY '{$newPassword}'");
+            $this->pdo->exec("FLUSH PRIVILEGES");
+            return true;
+        } catch (PDOException $e) {
+            // 如果 ALTER USER 失败，尝试旧版语法 (MySQL 5.7.5 及以下)
+            try {
+                $this->pdo->exec("SET PASSWORD FOR '{$username}'@'{$host}' = PASSWORD('{$newPassword}')");
+                $this->pdo->exec("FLUSH PRIVILEGES");
+                return true;
+            } catch (PDOException $e2) {
+                throw new Exception('修改密码失败: ' . $e->getMessage());
+            }
+        }
+    }
+
+    /**
      * 检查数据库是否存在
      */
     public function databaseExists() {
@@ -174,7 +195,11 @@ class InstallDatabase {
 
         // 写回文件
         if (file_put_contents($configFile, $configContent) === false) {
-            throw new Exception('写入配置文件失败，请检查文件权限');
+            // 尝试使用 chmod 修改权限后再写入
+            @chmod($configFile, 0777);
+            if (file_put_contents($configFile, $configContent) === false) {
+                throw new Exception('写入配置文件失败，请检查文件权限');
+            }
         }
 
         return true;
@@ -190,6 +215,53 @@ class InstallDatabase {
             return $version;
         } catch (PDOException) {
             return '未知';
+        }
+    }
+
+    /**
+     * 检查表是否存在
+     */
+    public function tableExists($tableName) {
+        try {
+            $stmt = $this->pdo->query("SHOW TABLES LIKE '{$tableName}'");
+            return $stmt->rowCount() > 0;
+        } catch (PDOException $e) {
+            return false;
+        }
+    }
+
+    /**
+     * 创建或更新管理员用户
+     */
+    public function createOrUpdateAdmin($username, $email, $password) {
+        // 确保 users 表存在
+        if (!$this->tableExists('users')) {
+            throw new Exception('用户表不存在，无法创建管理员');
+        }
+
+        try {
+            // 哈希密码
+            // 注意：这里假设安装环境支持password_hash，PHP 5.5+
+            $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+            
+            // 检查用户是否存在
+            $stmt = $this->pdo->prepare("SELECT id FROM users WHERE username = ? OR email = ?");
+            $stmt->execute([$username, $email]);
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($user) {
+                // 更新现有用户
+                $stmt = $this->pdo->prepare("UPDATE users SET password = ?, email = ?, is_admin = 1 WHERE id = ?");
+                $stmt->execute([$hashedPassword, $email, $user['id']]);
+            } else {
+                // 创建新用户
+                $stmt = $this->pdo->prepare("INSERT INTO users (username, email, password, is_admin, avatar, status) VALUES (?, ?, ?, 1, 'default_avatar.png', 'offline')");
+                $stmt->execute([$username, $email, $hashedPassword]);
+            }
+            
+            return true;
+        } catch (PDOException $e) {
+            throw new Exception('创建管理员失败: ' . $e->getMessage());
         }
     }
 }
