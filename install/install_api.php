@@ -182,6 +182,17 @@ function importDatabase() {
             $db->createDatabase();
         }
 
+        // 修改db.sql中的数据库名称
+        $sqlFile = dirname(__DIR__) . '/db.sql';
+        if (file_exists($sqlFile)) {
+            $lines = file($sqlFile);
+            if (count($lines) >= 4) {
+                $lines[1] = "CREATE DATABASE IF NOT EXISTS `$database` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" . PHP_EOL;
+                $lines[3] = "USE `$database`;" . PHP_EOL;
+                file_put_contents($sqlFile, implode('', $lines));
+            }
+        }
+
         // 检查是否有表
         $hasTables = $db->hasTables();
         if ($hasTables && $overwrite !== 'true') {
@@ -220,13 +231,22 @@ function importDatabase() {
                         $newLines[] = $newLine;
                     } elseif (strpos($line, "define('DB_USER'") !== false) {
                         $newLine = preg_replace("/\?: '([^']*)'\);/", "?: '$escapedUser');", $line);
-                        $newLines[] = $newLine ?: $line;
+                        if ($newLine === $line || $newLine === null) {
+                             $newLine = "define('DB_USER', getEnvVar('DB_USER') ?: getEnvVar('DB_USERNAME') ?: '$escapedUser');" . PHP_EOL;
+                        }
+                        $newLines[] = $newLine;
                     } elseif (strpos($line, "define('DB_NAME'") !== false) {
                         $newLine = preg_replace("/\?: '([^']*)'\);/", "?: '$escapedName');", $line);
-                        $newLines[] = $newLine ?: $line;
+                        if ($newLine === $line || $newLine === null) {
+                             $newLine = "define('DB_NAME', getEnvVar('DB_NAME') ?: getEnvVar('DATABASE_NAME') ?: '$escapedName');" . PHP_EOL;
+                        }
+                        $newLines[] = $newLine;
                     } elseif (strpos($line, "define('DB_HOST'") !== false) {
                         $newLine = preg_replace("/\?: '([^']*)'\);/", "?: '$escapedHost');", $line);
-                        $newLines[] = $newLine ?: $line;
+                        if ($newLine === $line || $newLine === null) {
+                             $newLine = "define('DB_HOST', getEnvVar('DB_HOST') ?: getEnvVar('DB_HOSTNAME') ?: '$escapedHost');" . PHP_EOL;
+                        }
+                        $newLines[] = $newLine;
                     } else {
                         $newLines[] = $line;
                     }
@@ -308,13 +328,22 @@ function importDatabase() {
                     $newLines[] = $newLine;
                 } elseif (strpos($line, "define('DB_USER'") !== false) {
                     $newLine = preg_replace("/\?: '([^']*)'\);/", "?: '$escapedUser');", $line);
-                    $newLines[] = $newLine ?: $line;
+                    if ($newLine === $line || $newLine === null) {
+                         $newLine = "define('DB_USER', getEnvVar('DB_USER') ?: getEnvVar('DB_USERNAME') ?: '$escapedUser');" . PHP_EOL;
+                    }
+                    $newLines[] = $newLine;
                 } elseif (strpos($line, "define('DB_NAME'") !== false) {
                     $newLine = preg_replace("/\?: '([^']*)'\);/", "?: '$escapedName');", $line);
-                    $newLines[] = $newLine ?: $line;
+                    if ($newLine === $line || $newLine === null) {
+                         $newLine = "define('DB_NAME', getEnvVar('DB_NAME') ?: getEnvVar('DATABASE_NAME') ?: '$escapedName');" . PHP_EOL;
+                    }
+                    $newLines[] = $newLine;
                 } elseif (strpos($line, "define('DB_HOST'") !== false) {
                     $newLine = preg_replace("/\?: '([^']*)'\);/", "?: '$escapedHost');", $line);
-                    $newLines[] = $newLine ?: $line;
+                    if ($newLine === $line || $newLine === null) {
+                         $newLine = "define('DB_HOST', getEnvVar('DB_HOST') ?: getEnvVar('DB_HOSTNAME') ?: '$escapedHost');" . PHP_EOL;
+                    }
+                    $newLines[] = $newLine;
                 } else {
                     $newLines[] = $line;
                 }
