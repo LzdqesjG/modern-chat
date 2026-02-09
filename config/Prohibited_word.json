@@ -1,0 +1,14 @@
+{
+    "words": [
+        "脏话1",
+        "脏话2",
+        "违禁词1",
+        "违禁词2",
+        "敏感词1",
+        "敏感词2"
+    ],
+    "max_warnings_per_day": 10,
+    "ban_time": 24,
+    "max_ban_time": 30,
+    "permanent_ban_days": 365
+}
