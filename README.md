@@ -201,7 +201,11 @@ chmod 777 uploads/
 
 将项目文件下载到您的服务器目录中。
 
-#### 2. 创建 .env 文件
+#### 2. 解锁网页
+
+删除网站目录下的lock文件并正式解锁 web 服务器。
+
+#### 3. 创建 .env 文件
 
 在项目根目录下创建 `.env` 文件，用于配置 Docker 部署的环境变量：
 
@@ -225,7 +229,7 @@ HTTPS_PORT=443
 PHPMYADMIN_PORT=888
 ```
 
-#### 3. 启动 Docker 容器
+#### 4. 启动 Docker 容器
 
 在项目根目录下执行以下命令启动 Docker 容器：
 
@@ -233,12 +237,12 @@ PHPMYADMIN_PORT=888
 docker-compose up -d
 ```
 
-#### 4. 访问应用
+#### 5. 访问应用
 
-- 聊天系统：`http://your-server-ip:HTTP_PORT/chat`
+- 聊天系统：`http://your-server-ip:HTTP_PORT/`
 - phpMyAdmin：`http://your-server-ip:PHPMYADMIN_PORT`
 
-#### 5. 停止 Docker 容器
+#### 6. 停止 Docker 容器
 
 在项目根目录下执行以下命令停止 Docker 容器：
 
@@ -246,19 +250,19 @@ docker-compose up -d
 docker-compose down
 ```
 
-#### 6. 查看 Docker 容器状态
+#### 7. 查看 Docker 容器状态
 
 ```bash
 docker-compose ps
 ```
 
-#### 7. 查看 Docker 容器日志
+#### 8. 查看 Docker 容器日志
 
 ```bash
 docker-compose logs
 ```
 
-#### 8. 重启 Docker 容器
+#### 9. 重启 Docker 容器
 
 ```bash
 docker-compose restart
