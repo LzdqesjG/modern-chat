@@ -23,8 +23,8 @@
   - 如果觉得项目好可以向开发者赞助（自愿）
     <p>
     
-    <img src="https://www.varesa.top/wallpapers/mm_facetoface_collect_qrcode_1770705339865.png" width="400" height="400" />
-    <img src="https://www.varesa.top/wallpapers/1770705388.jpg" width="400" height="400" />
+    <img src="https://www.varesa.top/wallpapers/mm_facetoface_collect_qrcode_1770705339865.png" width="500" height="400" />
+    <img src="https://www.varesa.top/wallpapers/1770705388.jpg" width="500" height="400" />
 </p>
 ---
 
