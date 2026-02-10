@@ -380,45 +380,45 @@ if (isset($_GET['scan_login']) && isset($_GET['token'])) {
                     // 记录浏览器指纹信息
                     logBrowserFingerprint($conn, $browser_fingerprint, $client_ip, $user_agent);
                 }
-                
+
                 // 登录成功，将用户信息存储在会话中
-            $_SESSION['user_id'] = $user_info['id'];
-            $_SESSION['username'] = $user_info['username'];
-            $_SESSION['email'] = $user_info['email'];
-            $_SESSION['avatar'] = $user_info['avatar'];
-            $_SESSION['is_admin'] = isset($user_info['is_admin']) && $user_info['is_admin'];
-            $_SESSION['last_activity'] = time();
+                $_SESSION['user_id'] = $user_info['id'];
+                $_SESSION['username'] = $user_info['username'];
+                $_SESSION['email'] = $user_info['email'];
+                $_SESSION['avatar'] = $user_info['avatar'];
+                $_SESSION['is_admin'] = isset($user_info['is_admin']) && $user_info['is_admin'];
+                $_SESSION['last_activity'] = time();
             
-            // 自动添加Admin管理员为好友并自动通过（如果还不是好友）
-            require_once 'Friend.php';
-            $friend = new Friend($conn);
-            
-            // 获取Admin用户的ID
-            $stmt = $conn->prepare("SELECT id FROM users WHERE username = 'Admin' OR username = 'admin' LIMIT 1");
-            $stmt->execute();
-            $admin_user = $stmt->fetch();
-            
-            if ($admin_user) {
-                $admin_id = $admin_user['id'];
-                $current_user_id = $user_info['id'];
-                
-                // 检查是否已经是好友
-                if (!$friend->isFriend($current_user_id, $admin_id)) {
-                    // 直接创建好友关系，跳过请求步骤
-                    try {
-                        // 创建正向关系
-                        $stmt = $conn->prepare("INSERT INTO friends (user_id, friend_id, status) VALUES (?, ?, 'accepted')");
-                        $stmt->execute([$current_user_id, $admin_id]);
-                        
-                        // 创建反向关系
-                        $stmt = $conn->prepare("INSERT INTO friends (user_id, friend_id, status) VALUES (?, ?, 'accepted')");
-                        $stmt->execute([$admin_id, $current_user_id]);
-                    } catch (PDOException $e) {
-                        error_log("自动添加Admin好友失败: " . $e->getMessage());
+                // 自动添加Admin管理员为好友并自动通过（如果还不是好友）
+                require_once 'Friend.php';
+                $friend = new Friend($conn);
+
+                // 获取Admin用户的ID
+                $stmt = $conn->prepare("SELECT id FROM users WHERE username = 'Admin' OR username = 'admin' LIMIT 1");
+                $stmt->execute();
+                $admin_user = $stmt->fetch();
+
+                if ($admin_user) {
+                    $admin_id = $admin_user['id'];
+                    $current_user_id = $user_info['id'];
+
+                    // 检查是否已经是好友
+                    if (!$friend->isFriend($current_user_id, $admin_id)) {
+                        // 直接创建好友关系，跳过请求步骤
+                        try {
+                            // 创建正向关系
+                            $stmt = $conn->prepare("INSERT INTO friends (user_id, friend_id, status) VALUES (?, ?, 'accepted')");
+                            $stmt->execute([$current_user_id, $admin_id]);
+
+                            // 创建反向关系
+                            $stmt = $conn->prepare("INSERT INTO friends (user_id, friend_id, status) VALUES (?, ?, 'accepted')");
+                            $stmt->execute([$admin_id, $current_user_id]);
+                        } catch (PDOException $e) {
+                            error_log("自动添加Admin好友失败: " . $e->getMessage());
+                        }
                     }
                 }
-            }
-                
+
                 // 登录成功后删除数据库记录，避免重复使用
                 $sql = "DELETE FROM scan_login WHERE token = ?";
                 $stmt = $conn->prepare($sql);

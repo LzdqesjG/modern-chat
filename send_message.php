@@ -298,33 +298,41 @@ require_once 'Group.php';
                     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
                 )");
             }
-            
+
+            // 检查并添加users表中可能不存在的字段
+            $requiredColumns = [
+                'warning_count_today' => "ADD COLUMN warning_count_today INT DEFAULT 0",
+                'last_warning_date' => "ADD COLUMN last_warning_date DATE DEFAULT NULL",
+                'is_banned_for_prohibited_words' => "ADD COLUMN is_banned_for_prohibited_words BOOLEAN DEFAULT FALSE",
+                'ban_end_for_prohibited_words' => "ADD COLUMN ban_end_for_prohibited_words TIMESTAMP NULL"
+            ];
+
+            foreach ($requiredColumns as $column => $alterSql) {
+                $stmt = $conn->prepare("SHOW COLUMNS FROM users LIKE ?");
+                $stmt->execute([$column]);
+                if (!$stmt->fetch()) {
+                    $conn->exec("ALTER TABLE users $alterSql");
+                }
+            }
+
             // 计算封禁结束时间
             $ban_end = $is_permanent ? null : date('Y-m-d H:i:s', time() + ($ban_duration_hours * 3600));
             $ban_type = $is_permanent ? 'permanent' : 'temporary';
             $ban_reason = '违反违禁词规则，累计警告次数：' . $warnings_count;
-            
+
             // 插入封禁记录
             $stmt = $conn->prepare("INSERT INTO prohibited_word_bans (user_id, ban_reason, ban_type, ban_end, warnings_count) VALUES (?, ?, ?, ?, ?)");
             $stmt->execute([$user_id, $ban_reason, $ban_type, $ban_end, $warnings_count]);
-            
-            // 更新users表中的违禁词相关字段
-            $stmt = $conn->prepare("ALTER TABLE users 
-                ADD COLUMN warning_count_today INT DEFAULT 0,
-                ADD COLUMN last_warning_date DATE DEFAULT NULL,
-                ADD COLUMN is_banned_for_prohibited_words BOOLEAN DEFAULT FALSE,
-                ADD COLUMN ban_end_for_prohibited_words TIMESTAMP NULL");
-            $stmt->execute();
-            
+
             // 更新用户封禁状态
-            $stmt = $conn->prepare("UPDATE users SET 
-                is_banned_for_prohibited_words = TRUE, 
-                ban_end_for_prohibited_words = ?, 
-                warning_count_today = 0, 
-                last_warning_date = NULL 
+            $stmt = $conn->prepare("UPDATE users SET
+                is_banned_for_prohibited_words = TRUE,
+                ban_end_for_prohibited_words = ?,
+                warning_count_today = 0,
+                last_warning_date = NULL
                 WHERE id = ?");
             $stmt->execute([$ban_end, $user_id]);
-            
+
             return true;
         } catch (PDOException $e) {
             error_log("Ban user error: " . $e->getMessage());
@@ -613,14 +621,14 @@ require_once 'Group.php';
         // 处理@提及
         processMentions($result['message_id'], $message_text, $chat_type, $chat_type === 'friend' ? $friend_id : $selected_id, $user_id, $conn);
         
-        // 获取完整的消息信息
+            // 获取完整的消息信息
         if ($chat_type === 'friend') {
             // 获取好友消息
-            $stmt = $conn->prepare("SELECT * FROM messages WHERE id = ?");
+            $stmt = $conn->prepare("SELECT *, m.id as message_id FROM messages m WHERE m.id = ?");
             $stmt->execute([$result['message_id']]);
         } else {
             // 获取群聊消息
-            $stmt = $conn->prepare("SELECT gm.*, u.username as sender_username, u.avatar FROM group_messages gm JOIN users u ON gm.sender_id = u.id WHERE gm.id = ?");
+            $stmt = $conn->prepare("SELECT gm.*, u.username as sender_username, u.avatar, gm.id as message_id FROM group_messages gm JOIN users u ON gm.sender_id = u.id WHERE gm.id = ?");
             $stmt->execute([$result['message_id']]);
         }
         $sent_message = $stmt->fetch();
