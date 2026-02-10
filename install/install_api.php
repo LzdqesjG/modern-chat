@@ -84,10 +84,10 @@ function checkEnvironment() {
  */
 function testDatabase() {
     try {
-        $host = $_POST['host'] ?? '';
-        $port = $_POST['port'] ?? 3306;
-        $database = $_POST['database'] ?? '';
-        $username = $_POST['username'] ?? '';
+        $host = trim($_POST['host'] ?? '');
+        $port = trim($_POST['port'] ?? 3306);
+        $database = trim($_POST['database'] ?? '');
+        $username = trim($_POST['username'] ?? '');
         $password = $_POST['password'] ?? '';
 
         // 验证必填字段
@@ -143,10 +143,10 @@ function testDatabase() {
  */
 function importDatabase() {
     try {
-        $host = $_POST['host'] ?? '';
-        $port = $_POST['port'] ?? 3306;
-        $database = $_POST['database'] ?? '';
-        $username = $_POST['username'] ?? '';
+        $host = trim($_POST['host'] ?? '');
+        $port = trim($_POST['port'] ?? 3306);
+        $database = trim($_POST['database'] ?? '');
+        $username = trim($_POST['username'] ?? '');
         $password = $_POST['password'] ?? '';
         $overwrite = $_POST['overwrite'] ?? 'false';
 
