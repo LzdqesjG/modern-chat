@@ -23,11 +23,11 @@
   - 如果觉得项目好可以向开发者赞助（自愿）
   - wx:
     <p>
-    <img src="https://www.varesa.top/wallpapers/1770705339865.png"/>
+    <img src="https://www.varesa.top/wallpapers/1770705339865.png" width="256" height="256"/>
     </p>
   - zfb:
     <p>
-    <img src="https://www.varesa.top/wallpapers/177070538832.jpg" />
+    <img src="https://www.varesa.top/wallpapers/177070538832.jpg" width="256" height="256"/>
     </p>
 ---
 
