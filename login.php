@@ -260,24 +260,42 @@ require_once 'db.php';
         }
 
         /* 协议复选框样式 */
-        .agreement-hint {
+        .agreement-checkbox {
+            display: flex;
+            align-items: center;
             margin-bottom: 20px;
             padding: 12px;
             background: #f8f9fa;
             border-radius: 8px;
             border: 1px solid #e0e0e0;
-            font-size: 13px;
-            color: #666;
-            text-align: center;
         }
 
-        .agreement-hint a {
+        .agreement-checkbox input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            margin: 0 10px 0 0;
+            cursor: pointer;
+            accent-color: #12b7f5;
+        }
+
+        .agreement-checkbox label {
+            font-size: 13px;
+            color: #666;
+            cursor: pointer;
+            flex: 1;
+            margin: 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .agreement-checkbox a {
             color: #12b7f5;
             text-decoration: none;
             font-weight: 600;
+            cursor: pointer;
         }
 
-        .agreement-hint a:hover {
+        .agreement-checkbox a:hover {
             text-decoration: underline;
         }
 
@@ -625,9 +643,12 @@ require_once 'db.php';
                 <!-- 浏览器指纹隐藏字段 -->
                 <input type="hidden" name="browser_fingerprint" id="browser_fingerprint">
 
-                <!-- 协议同意提示 -->
-                <div class="agreement-hint">
-                    登录即表示您已阅读并同意 <a href="javascript:void(0)" onclick="showModal('terms')">《用户协议》</a> 和 <a href="javascript:void(0)" onclick="showModal('privacy')">《隐私协议》</a>
+                <!-- 协议同意复选框 -->
+                <div class="agreement-checkbox">
+                    <input type="checkbox" id="agree_terms" name="agree_terms">
+                    <label for="agree_terms">
+                        我已阅读并同意 <a href="javascript:void(0)" onclick="showModal('terms')">《用户协议》</a> 和 <a href="javascript:void(0)" onclick="showModal('privacy')">《隐私协议》</a>
+                    </label>
                 </div>
 
                 <button type="submit" class="btn" id="loginBtn">登录</button>
@@ -932,13 +953,10 @@ require_once 'db.php';
         
         // 表单提交处理，生成浏览器指纹
         async function handleLoginSubmit(form) {
-            // 检查是否两个协议都已阅读
-            if (!canLogin()) {
-                const missing = [];
-                if (!readStatus.terms.completed) missing.push('用户协议');
-                if (!readStatus.privacy.completed) missing.push('隐私协议');
-
-                alert('请先完整阅读协议：' + missing.join('、'));
+            // 检查是否同意协议
+            const agreeCheckbox = document.getElementById('agree_terms');
+            if (!agreeCheckbox.checked) {
+                alert('请勾选同意用户协议和隐私协议');
                 return false;
             }
 
