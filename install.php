@@ -616,8 +616,10 @@
         }
         
         .progress-bar.animated {
-            background-size: 40px 40px;
-            background-image: linear-gradient(45deg, rgba(255, 255, 255, .15) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, .15) 50%, rgba(255, 255, 255, .15) 75%, transparent 75%, transparent);
+            background-size: 40px 40px, 100% 100%;
+            background-image: 
+                linear-gradient(45deg, rgba(255, 255, 255, .15) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, .15) 50%, rgba(255, 255, 255, .15) 75%, transparent 75%, transparent),
+                linear-gradient(135deg, #12b7f5 0%, #00a2e8 100%);
             animation: progress-stripes 1s linear infinite;
         }
         
