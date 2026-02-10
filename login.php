@@ -241,22 +241,45 @@ require_once 'db.php';
         .helper-links {
             margin-top: 20px;
             display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .helper-links-top {
+            display: flex;
             justify-content: space-between;
             align-items: center;
-            font-size: 14px;
-            color: #666;
         }
-        
+
+        .helper-links-bottom {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #e0e0e0;
+            font-size: 13px;
+            color: #999;
+        }
+
         .helper-links a {
             color: #12b7f5;
             text-decoration: none;
             transition: color 0.3s ease;
             font-weight: 600;
         }
-        
+
         .helper-links a:hover {
             color: #00a2e8;
             text-decoration: underline;
+        }
+
+        .helper-links-bottom a {
+            font-weight: 400;
+            color: #999;
+        }
+
+        .helper-links-bottom a:hover {
+            color: #12b7f5;
         }
         
         /* 验证码容器样式 */
@@ -400,12 +423,19 @@ require_once 'db.php';
             </form>
             
             <div class="helper-links">
-                <div class="forget-password">
-                    忘记密码？ <a href="forgetpassword.php">点击这里</a>
+                <div class="helper-links-top">
+                    <div class="forget-password">
+                        忘记密码？ <a href="forgetpassword.php">点击这里</a>
+                    </div>
+                    
+                    <div class="register-link">
+                        还没有账户？ <a href="register.php">立即注册</a>
+                    </div>
                 </div>
-                
-                <div class="register-link">
-                    还没有账户？ <a href="register.php">立即注册</a>
+
+                <div class="helper-links-bottom">
+                    <a href="Agreement/terms_of_service.md" target="_blank">用户协议</a>
+                    <a href="Agreement/privacy_policy.md" target="_blank">隐私协议</a>
                 </div>
             </div>
         </div>
