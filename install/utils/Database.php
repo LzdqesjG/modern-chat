@@ -11,6 +11,7 @@ class InstallDatabase {
     private $username;
     private $password;
     private $pdo;
+    private $errorMap;
 
     /**
      * 构造函数
@@ -21,6 +22,50 @@ class InstallDatabase {
         $this->database = '';
         $this->username = '';
         $this->password = '';
+        
+        // 加载错误对照表
+        $errorFile = __DIR__ . '/mysql_errors.php';
+        if (file_exists($errorFile)) {
+            $this->errorMap = require $errorFile;
+        } else {
+            $this->errorMap = [];
+        }
+    }
+
+    /**
+     * 获取友好的错误提示
+     */
+    private function getFriendlyError($e) {
+        $msg = $e->getMessage();
+        $code = $e->getCode();
+        
+        // 尝试从getMessage中提取错误码（PDO有时会将MySQL错误码包含在消息中，如SQLSTATE[HY000] [2002] ...）
+        if (preg_match('/\[(\d+)\]/', $msg, $matches)) {
+            $realCode = $matches[1];
+            if (isset($this->errorMap[$realCode])) {
+                return $this->errorMap[$realCode];
+            }
+        }
+        
+        // 尝试直接使用getCode（注意PDO的getCode有时返回SQLSTATE字符串）
+        if (is_numeric($code) && isset($this->errorMap[$code])) {
+            return $this->errorMap[$code];
+        }
+        
+        // 针对特定字符串的匹配（保留原有的特殊逻辑）
+        if (strpos($msg, 'php_network_getaddresses') !== false || strpos($msg, 'getaddrinfo') !== false) {
+             return '无法解析数据库服务器地址，请检查主机名是否正确（不要包含http://等前缀）';
+        }
+        if (strpos($msg, 'Connection refused') !== false) {
+             return '数据库连接被拒绝，请检查端口是否正确或防火墙设置';
+        }
+        if (strpos($msg, 'Access denied') !== false) {
+             // 可能是密码错误(1045)或无权访问(1044/1227)，如果上面没匹配到代码，这里做通用提示
+             return '访问被拒绝。请检查用户名、密码或数据库权限。(' . $msg . ')';
+        }
+        
+        // 默认返回原始错误
+        return $msg;
     }
 
     /**
@@ -46,7 +91,7 @@ class InstallDatabase {
             ]);
             return true;
         } catch (PDOException $e) {
-            throw new Exception('数据库连接失败: ' . $e->getMessage());
+            throw new Exception($this->getFriendlyError($e));
         }
     }
 
@@ -66,7 +111,7 @@ class InstallDatabase {
                 $this->pdo->exec("FLUSH PRIVILEGES");
                 return true;
             } catch (PDOException $e2) {
-                throw new Exception('修改密码失败: ' . $e->getMessage());
+                throw new Exception($this->getFriendlyError($e2));
             }
         }
     }
@@ -79,7 +124,23 @@ class InstallDatabase {
             $stmt = $this->pdo->query("SHOW DATABASES LIKE '{$this->database}'");
             return $stmt->rowCount() > 0;
         } catch (PDOException $e) {
-            throw new Exception('检查数据库失败: ' . $e->getMessage());
+            // 处理权限不足错误 (1227 Access denied)
+            // SQLSTATE[42000]: Syntax error or access violation: 1227 Access denied
+            if ($e->getCode() == '42000' || strpos($e->getMessage(), '1227') !== false) {
+                try {
+                    // 尝试直接切换到该数据库
+                    $this->pdo->exec("USE `{$this->database}`");
+                    return true;
+                } catch (PDOException $e2) {
+                    // 如果是 "Unknown database" (1049)，则确实不存在
+                    if ($e2->getCode() == '1049' || strpos($e2->getMessage(), 'Unknown database') !== false) {
+                        return false;
+                    }
+                    // 其他错误，仍然视为存在（忽略错误继续执行）
+                    return true;
+                }
+            }
+            throw new Exception($this->getFriendlyError($e));
         }
     }
 
@@ -91,7 +152,7 @@ class InstallDatabase {
             $this->pdo->exec("CREATE DATABASE IF NOT EXISTS `{$this->database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
             return true;
         } catch (PDOException $e) {
-            throw new Exception('创建数据库失败: ' . $e->getMessage());
+            throw new Exception($this->getFriendlyError($e));
         }
     }
 
@@ -103,7 +164,7 @@ class InstallDatabase {
             $stmt = $this->pdo->query("SHOW TABLES FROM `{$this->database}`");
             return $stmt->rowCount() > 0;
         } catch (PDOException $e) {
-            throw new Exception('检查数据表失败: ' . $e->getMessage());
+            throw new Exception($this->getFriendlyError($e));
         }
     }
 
@@ -140,7 +201,7 @@ class InstallDatabase {
             try {
                 $this->pdo->exec($statement);
             } catch (PDOException $e) {
-                throw new Exception('执行SQL语句失败: ' . $e->getMessage());
+                throw new Exception($this->getFriendlyError($e));
             }
         }
 
@@ -163,7 +224,7 @@ class InstallDatabase {
 
             return true;
         } catch (PDOException $e) {
-            throw new Exception('清空数据库失败: ' . $e->getMessage());
+            throw new Exception($this->getFriendlyError($e));
         }
     }
 
@@ -261,7 +322,7 @@ class InstallDatabase {
             
             return true;
         } catch (PDOException $e) {
-            throw new Exception('创建管理员失败: ' . $e->getMessage());
+            throw new Exception($this->getFriendlyError($e));
         }
     }
 }
