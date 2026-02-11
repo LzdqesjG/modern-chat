@@ -20,15 +20,7 @@
    ### 已部署好的体验网站
 
   - https://chat.hyacine.com.cn/chat
-  - 如果觉得项目好可以向开发者赞助（自愿）
-  - wx:
-    <p>
-    <img src="https://www.varesa.top/wallpapers/1770705339865.png" width="256" height="256"/>
-    </p>
-  - zfb:
-    <p>
-    <img src="https://www.varesa.top/wallpapers/177070538832.jpg" width="256" height="256"/>
-    </p>
+
 ---
 
 <p>
@@ -87,7 +79,15 @@
 - 🔄 **在线更新系统** - 管理员可以通过网页端在线更新系统，自动下载并安装更新
 - 🛡️ **安全验证** - 集成极验 (Geetest 4.0) 行为验证，防止恶意注册和登录
 - 📱 **短信验证** - 集成阿里云短信服务，支持手机号注册和验证（需根据引导页面自己配置）
-
+- 如果觉得项目好可以向开发者赞助（自愿）
+- wx:
+    <p>
+    <img src="https://www.varesa.top/wallpapers/1770705339865.png" width="256" height="256"/>
+    </p>
+- zfb:
+    <p>
+    <img src="https://www.varesa.top/wallpapers/177070538832.jpg" width="256" height="256"/>
+    </p>
 ## 技术栈
 
 - **前端**: HTML5, CSS3, JavaScript
