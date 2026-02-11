@@ -85,6 +85,8 @@
 - ⚡ **Service Worker加速** - 支持缓存静态资源和用户头像，提升加载速度
 - 🌍 **世界大厅** - 自动创建的全员群聊，命名为"世界大厅-{编号}"
 - 🔄 **在线更新系统** - 管理员可以通过网页端在线更新系统，自动下载并安装更新
+- 🛡️ **安全验证** - 集成极验 (Geetest 4.0) 行为验证，防止恶意注册和登录
+- 📱 **短信验证** - 集成阿里云短信服务，支持手机号注册和验证（需根据引导页面自己配置）
 
 ## 技术栈
 
@@ -110,7 +112,8 @@
     "email_verify_api": "https:\/\/api.nbhao.org\/v1\/email\/verify",
     "email_verify_api_Request": "POST",
     "email_verify_api_Verify_parameters": "message.result",
-    "Random_song": false
+    "Random_song": false,
+    
 }
 ```
 
@@ -503,6 +506,12 @@ docker-compose restart
 - 更新过程中不要关闭浏览器
 - 建议在更新前备份重要数据
 - 更新后可能需要清除浏览器缓存
+
+### 23. 帮助中心
+
+- 在安装向导或系统使用过程中，您可以点击"常见问题"或"帮助"链接访问帮助中心
+- 帮助中心包含数据库密码获取、阿里云短信配置等常见问题的详细解答
+- 页面地址：`help/index.php`
 
 ---
 
