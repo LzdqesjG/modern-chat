@@ -1,4 +1,10 @@
 <?php
+// 设置错误处理 - 放在最前面以捕获所有可能的输出
+error_reporting(E_ALL);
+ini_set('display_errors', 0);
+// 开启输出缓冲区，防止杂乱信息破坏JSON响应
+ob_start();
+
 /**
  * 安装API接口
  * 处理所有安装相关的AJAX请求
@@ -8,10 +14,6 @@
 require_once __DIR__ . '/utils/Common.php';
 require_once __DIR__ . '/utils/Environment.php';
 require_once __DIR__ . '/utils/Database.php';
-
-// 设置错误处理
-error_reporting(E_ALL);
-ini_set('display_errors', 0);
 
 // 设置时区
 date_default_timezone_set('Asia/Shanghai');
@@ -57,6 +59,27 @@ switch ($action) {
         getVersionInfo();
         break;
 
+    case 'send_test_sms':
+        if ($method !== 'POST') {
+            InstallCommon::jsonResponse(false, '请求方法错误');
+        }
+        sendTestSms();
+        break;
+
+    case 'verify_test_sms':
+        if ($method !== 'POST') {
+            InstallCommon::jsonResponse(false, '请求方法错误');
+        }
+        verifyTestSms();
+        break;
+
+    case 'skip_sms_config':
+        if ($method !== 'POST') {
+            InstallCommon::jsonResponse(false, '请求方法错误');
+        }
+        skipSmsConfig();
+        break;
+
     default:
         InstallCommon::jsonResponse(false, '无效的操作');
 }
@@ -74,7 +97,7 @@ function checkEnvironment() {
             'system_info' => $systemInfo,
             'all_passed' => InstallEnvironment::allPassed($checks)
         ]);
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
         InstallCommon::jsonResponse(false, '环境检测失败: ' . $e->getMessage());
     }
 }
@@ -133,7 +156,7 @@ function testDatabase() {
             'db_exists' => $dbExists,
             'db_version' => $dbVersion
         ]);
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
         InstallCommon::jsonResponse(false, $e->getMessage());
     }
 }
@@ -286,7 +309,8 @@ function importDatabase() {
                 // 如果创建管理员失败，可能表结构不对，还是返回成功但不带管理员信息
                 InstallCommon::jsonResponse(true, '数据库已存在，跳过导入', [
                     'tables_imported' => true,
-                    'skipped' => true
+                    'skipped' => true,
+                    'admin_creation_error' => $e->getMessage()
                 ]);
             }
             return;
@@ -395,7 +419,7 @@ function completeInstall() {
         InstallCommon::jsonResponse(true, '安装完成', [
             'lock_created' => true
         ]);
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
         InstallCommon::jsonResponse(false, '安装失败: ' . $e->getMessage());
     }
 }
@@ -413,7 +437,196 @@ function getVersionInfo() {
             'release_date' => $releaseDate,
             'php_version' => PHP_VERSION
         ]);
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
         InstallCommon::jsonResponse(false, '获取版本信息失败: ' . $e->getMessage());
+    }
+}
+
+/**
+ * 发送测试短信
+ */
+function sendTestSms() {
+    try {
+        $accessKeyId = trim($_POST['access_key_id'] ?? '');
+        $accessKeySecret = trim($_POST['access_key_secret'] ?? '');
+        $phone = trim($_POST['test_phone'] ?? '');
+        
+        if (empty($accessKeyId) || empty($accessKeySecret) || empty($phone)) {
+            InstallCommon::jsonResponse(false, '请填写完整信息');
+        }
+        
+        // 1. 更新 send_sms.php 中的密钥
+        $smsFile = dirname(__DIR__) . '/send_sms.php';
+        if (!file_exists($smsFile)) {
+            InstallCommon::jsonResponse(false, 'send_sms.php 文件不存在');
+        }
+        
+        $content = file_get_contents($smsFile);
+        
+        // 替换 AccessKeyId
+        $content = preg_replace(
+            '/\$accessKeyId\s*=\s*[\'"][^\'"]*[\'"];/', 
+            "\$accessKeyId = '$accessKeyId';", 
+            $content
+        );
+        
+        // 替换 AccessKeySecret
+        $content = preg_replace(
+            '/\$accessKeySecret\s*=\s*[\'"][^\'"]*[\'"];/', 
+            "\$accessKeySecret = '$accessKeySecret';", 
+            $content
+        );
+        
+        if (file_put_contents($smsFile, $content) === false) {
+            InstallCommon::jsonResponse(false, '无法写入 send_sms.php，请检查权限');
+        }
+        
+        // 2. 调用 API 发送短信
+        // 优先引入 vendor/autoload.php
+        $vendorAutoload = dirname(__DIR__) . '/vendor/autoload.php';
+        if (file_exists($vendorAutoload)) {
+            require_once $vendorAutoload;
+        } else {
+            InstallCommon::jsonResponse(false, '缺少依赖包 (vendor/autoload.php)，请先在服务器执行 composer install');
+        }
+
+        // 引入 AliSmsClient 类
+        $aliSmsFile = dirname(__DIR__) . '/includes/AliSmsClient.php';
+        if (!file_exists($aliSmsFile)) {
+             $aliSmsFile = dirname(__DIR__) . '/includes/AliSmsClient.php';
+             if (!file_exists($aliSmsFile)) {
+                 InstallCommon::jsonResponse(false, 'AliSmsClient.php 文件不存在，无法发送短信');
+             }
+        }
+        require_once $aliSmsFile;
+        
+        // 实例化 Client
+        // 检查类是否存在
+        if (!class_exists('AliSmsClient')) {
+             InstallCommon::jsonResponse(false, 'AliSmsClient 类未定义');
+        }
+        
+        $smsClient = new AliSmsClient($accessKeyId, $accessKeySecret);
+        
+        // 生成6位验证码
+        $code = str_pad(mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
+        
+        // 发送短信
+        $result = $smsClient->sendVerifyCode($phone, 300, $code);
+        
+        // 检查返回结果是否是有效的数组
+        if (!is_array($result)) {
+             // 可能是 JSON 字符串，尝试解码
+             if (is_string($result)) {
+                 $decoded = json_decode($result, true);
+                 if (json_last_error() === JSON_ERROR_NONE) {
+                     $result = $decoded;
+                 } else {
+                     // 无法解码，构造错误
+                     $result = ['success' => false, 'error' => 'API 返回格式错误: ' . $result];
+                 }
+             } else {
+                 $result = ['success' => false, 'error' => 'API 返回未知类型'];
+             }
+        }
+        
+        if (isset($result['success']) && $result['success']) {
+            // 保存验证码到 Session
+            if (session_status() === PHP_SESSION_NONE) {
+                session_start();
+            }
+            $_SESSION['install_sms_code'] = $code;
+            $_SESSION['install_sms_phone'] = $phone;
+            
+            InstallCommon::jsonResponse(true, '发送成功');
+        } else {
+            InstallCommon::jsonResponse(false, '发送失败: ' . ($result['error'] ?? $result['message'] ?? '未知错误'));
+        }
+        
+    } catch (Exception $e) {
+        InstallCommon::jsonResponse(false, '发送异常: ' . $e->getMessage());
+    }
+}
+
+/**
+ * 验证测试短信
+ */
+function verifyTestSms() {
+    try {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+        
+        $code = trim($_POST['verify_code'] ?? '');
+        $sessionCode = $_SESSION['install_sms_code'] ?? '';
+        
+        if (empty($code)) {
+            InstallCommon::jsonResponse(false, '请输入验证码');
+        }
+        
+        if ($code !== $sessionCode) {
+            InstallCommon::jsonResponse(false, '验证码错误');
+        }
+        
+        // 验证通过，更新 config.json
+        $configFile = dirname(__DIR__) . '/../config/config.json';
+        if (file_exists($configFile)) {
+            $config = json_decode(file_get_contents($configFile), true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $config['phone_sms'] = true;
+                file_put_contents($configFile, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            }
+        }
+        
+        InstallCommon::jsonResponse(true, '验证成功');
+        
+    } catch (Exception $e) {
+        InstallCommon::jsonResponse(false, '验证异常: ' . $e->getMessage());
+    }
+}
+
+/**
+ * 跳过短信配置
+ */
+function skipSmsConfig() {
+    try {
+        // 1. 覆盖文件
+        $sourceDir = __DIR__;
+        $targetDir = dirname(__DIR__) . '/../';
+        
+        $filesToCopy = ['register.php', 'register_process.php'];
+        
+        foreach ($filesToCopy as $file) {
+            $source = $sourceDir . '/' . $file;
+            $target = $targetDir . $file;
+            
+            if (file_exists($source)) {
+                if (!copy($source, $target)) {
+                    InstallCommon::jsonResponse(false, "无法复制文件 $file");
+                }
+            } else {
+                // 如果源文件不存在，可能是路径问题，尝试上一级
+                // 注意：install_api.php 在 install/ 目录下
+                // 那么 __DIR__ 是 .../install/
+                // 源文件应该在 .../install/register.php
+                // 我们在前面读取目录时看到 register.php 在 install/ 下
+                InstallCommon::jsonResponse(false, "源文件 $file 不存在");
+            }
+        }
+        
+        // 2. 确保 config.json 中 phone_sms 为 false
+        $configFile = dirname(__DIR__) . '/../config/config.json';
+        if (file_exists($configFile)) {
+            $config = json_decode(file_get_contents($configFile), true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $config['phone_sms'] = false;
+                file_put_contents($configFile, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            }
+        }
+        
+        InstallCommon::jsonResponse(true, '已跳过短信配置');
+        
+    } catch (Throwable $e) {
+        InstallCommon::jsonResponse(false, '跳过失败: ' . $e->getMessage());
     }
 }

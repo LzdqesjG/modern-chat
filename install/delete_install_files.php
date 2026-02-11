@@ -16,14 +16,24 @@ $filesToDelete = [
     $rootDir . '/db.sql',
     $rootDir . '/lock', // 删除部署锁文件
     $rootDir . '/.lock', // 删除旧的部署锁文件
-    $rootDir . '/install/delete_install_files.php' // 删除自己
+    $rootDir . '/install/delete_install_files.php', // 删除自己
+    $rootDir . '/help/index.php',
+    $rootDir . '/Readme.md',
+    $rootDir . '/.gitignore',
+    $rootDir . '/.env',
+    $rootDir . '/LICENSE',
+    $rootDir . '/install/register.php',
+    $rootDir . '/install/register_process.php',
+    $rootDir . '/install/utils/mysql_error.php',
+    $rootDir . '/test.php'
 ];
 
 // 需要删除的目录（必须为空才能删除）
 // 我们先尝试删除目录中的所有文件，然后删除目录
 $dirsToDelete = [
     $rootDir . '/install/utils',
-    $rootDir . '/install'
+    $rootDir . '/install',
+    $rootDir . '/help'
 ];
 
 // 递归删除目录函数
