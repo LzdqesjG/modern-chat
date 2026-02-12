@@ -1016,7 +1016,7 @@ require_once 'db.php';
             }
         };
 
-        const MIN_READ_TIME = 15; // 最小阅读时间（秒）
+        const MIN_READ_TIME = 10; // 最小阅读时间（秒）
 
         let currentAgreement = null;
         let readStatus = {
@@ -1033,7 +1033,7 @@ require_once 'db.php';
             const maxScroll = scrollHeight - clientHeight;
 
             // 每次滚动一小段距离
-            const scrollStep = maxScroll / (MIN_READ_TIME * 10); // 15秒内均匀滚动
+            const scrollStep = maxScroll / (MIN_READ_TIME * 60); // 10秒内均匀滚动（约60fps）
             const currentScroll = bodyEl.scrollTop;
 
             if (currentScroll < maxScroll) {
@@ -1110,15 +1110,21 @@ require_once 'db.php';
                                 readStatus[type].readTime = 0;
                                 readStatus[type].scrolledToBottom = false;
 
+                                // 更频繁地执行滚动，使滚动更连续
+                                let scrollInterval = setInterval(() => {
+                                    // 自动滚动
+                                    autoScrollToBottom(bodyEl, progressFill, progressText, type);
+                                }, 16); // 约60fps，使滚动更平滑
+
+                                // 单独的计时器用于跟踪阅读时间
                                 readTimer = setInterval(() => {
                                     readStatus[type].readTime++;
 
-                                    // 自动滚动
-                                    autoScrollToBottom(bodyEl, progressFill, progressText, type);
-
                                     if (readStatus[type].readTime >= MIN_READ_TIME) {
                                         clearInterval(readTimer);
+                                        clearInterval(scrollInterval);
                                         readTimer = null;
+                                        scrollInterval = null;
                                         readStatus[type].completed = true;
                                         readStatus[type].scrolledToBottom = true;
 
@@ -1201,10 +1207,22 @@ require_once 'db.php';
                 }, 1000);
             }
 
-            bodyEl.onscroll = function() {
+            // 记录上次滚动位置，用于阻止手动滚动
+            let lastScrollTop = 0;
+            
+            bodyEl.onscroll = function(e) {
                 const scrollTop = bodyEl.scrollTop;
                 const scrollHeight = bodyEl.scrollHeight;
                 const clientHeight = bodyEl.clientHeight;
+
+                // 如果尚未滚动到底部，阻止手动滚动
+                if (!readStatus[type].scrolledToBottom && readStatus[type].readTime < MIN_READ_TIME) {
+                    bodyEl.scrollTop = lastScrollTop;
+                    return;
+                }
+
+                // 记录当前滚动位置
+                lastScrollTop = scrollTop;
 
                 // 计算滚动百分比
                 const scrollPercent = Math.min(100, Math.round((scrollTop / (scrollHeight - clientHeight)) * 100));

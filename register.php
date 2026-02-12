@@ -769,10 +769,10 @@
             privacy: null
         };
         let countdownSeconds = {
-            terms: 15,
-            privacy: 15
+            terms: 10,
+            privacy: 10
         };
-        const REQUIRED_READ_TIME = 15; // 必须倒计时15秒
+        const REQUIRED_READ_TIME = 10; // 必须倒计时10秒
 
         // 自动滚动函数
         function autoScrollToBottom() {
@@ -782,18 +782,38 @@
                 const clientHeight = bodyEl.clientHeight;
                 const maxScroll = scrollHeight - clientHeight;
 
-                // 每次滚动一小段距离
-                const scrollStep = maxScroll / (REQUIRED_READ_TIME * 10); // 15秒内均匀滚动
+                // 更快、更连续的滚动
+                const scrollStep = maxScroll / 50; // 分50次滚动完成
                 const currentScroll = bodyEl.scrollTop;
 
                 if (currentScroll < maxScroll) {
                     bodyEl.scrollTop = Math.min(currentScroll + scrollStep, maxScroll);
+                    
+                    // 更新进度条
+                    const scrollPercent = Math.min(100, Math.round((bodyEl.scrollTop / maxScroll) * 100));
+                    progressFill.style.width = scrollPercent + '%';
+                    progressText.textContent = scrollPercent + '%';
+                } else {
+                    // 滚动到底部后，允许用户手动滚动
+                    enableManualScroll();
                 }
+            }
+        }
 
-                // 更新进度条
-                const scrollPercent = Math.min(100, Math.round((bodyEl.scrollTop / maxScroll) * 100));
-                progressFill.style.width = scrollPercent + '%';
-                progressText.textContent = scrollPercent + '%';
+        // 启用手动滚动
+        function enableManualScroll() {
+            const bodyEl = document.getElementById('modalBody');
+            if (bodyEl) {
+                const scrollHeight = bodyEl.scrollHeight;
+                const clientHeight = bodyEl.clientHeight;
+
+                bodyEl.onscroll = function() {
+                    const scrollTop = bodyEl.scrollTop;
+                    const maxScroll = scrollHeight - clientHeight;
+                    const scrollPercent = Math.min(100, Math.round((scrollTop / maxScroll) * 100));
+                    progressFill.style.width = scrollPercent + '%';
+                    progressText.textContent = scrollPercent + '%';
+                };
             }
         }
 
