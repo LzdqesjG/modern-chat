@@ -274,24 +274,55 @@
             height: 100%;
             padding: 24px;
             overflow: hidden;
+            box-sizing: border-box;
         }
 
-        .modal-body h1, .modal-body h2, .modal-body h3 {
+        /* 确保内容容器能够正确显示各种元素 */
+        .modal-body-content p {
+            margin: 10px 0;
+        }
+
+        .modal-body-content h1 {
+            margin-top: 30px;
+            margin-bottom: 15px;
+        }
+
+        .modal-body-content h2 {
+            margin-top: 25px;
+            margin-bottom: 12px;
+        }
+
+        .modal-body-content h3 {
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        .modal-body-content ul, .modal-body-content ol {
+            margin: 10px 0;
+            padding-left: 25px;
+        }
+
+        .modal-body-content li {
+            margin: 6px 0;
+        }
+
+        .modal-body h1, .modal-body h2, .modal-body h3,
+        .modal-body-content h1, .modal-body-content h2, .modal-body-content h3 {
             color: #333;
             margin-top: 20px;
             margin-bottom: 10px;
         }
 
-        .modal-body h1 { font-size: 20px; }
-        .modal-body h2 { font-size: 18px; }
-        .modal-body h3 { font-size: 16px; }
+        .modal-body h1, .modal-body-content h1 { font-size: 20px; }
+        .modal-body h2, .modal-body-content h2 { font-size: 18px; }
+        .modal-body h3, .modal-body-content h3 { font-size: 16px; }
 
-        .modal-body ul {
+        .modal-body ul, .modal-body-content ul {
             margin: 10px 0;
             padding-left: 20px;
         }
 
-        .modal-body li {
+        .modal-body li, .modal-body-content li {
             margin: 5px 0;
         }
 
