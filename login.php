@@ -1068,23 +1068,67 @@ require_once 'db.php';
 
             modal.classList.add('active');
 
-            try {
-                const response = await fetch(agreements[type].url);
-                if (response.ok) {
-                    const content = await response.text();
-                    bodyEl.innerHTML = renderMarkdown(content);
+            // 使用重试机制加载协议
+            await loadAgreementWithRetry(type, bodyEl, 3); // 最多重试3次
 
-                    // 添加滚动监听
-                    setTimeout(() => {
-                        setupScrollListener(type);
-                    }, 100);
-                } else {
-                    bodyEl.innerHTML = '<div style="text-align: center; padding: 40px; color: #ff4d4f;">加载失败，请稍后重试</div>';
+            async function loadAgreementWithRetry(type, bodyEl, maxRetries) {
+                let retryCount = 0;
+                let lastError = null;
+
+                while (retryCount <= maxRetries) {
+                    try {
+                        bodyEl.innerHTML = '<div style="text-align: center; padding: 40px;">加载中...</div>';
+                        
+                        const response = await fetch(agreements[type].url);
+                        if (response.ok) {
+                            const content = await response.text();
+                            bodyEl.innerHTML = renderMarkdown(content);
+
+                            // 添加滚动监听
+                            setTimeout(() => {
+                                setupScrollListener(type);
+                            }, 100);
+                            
+                            return; // 成功加载，退出函数
+                        } else {
+                            lastError = `HTTP错误: ${response.status}`;
+                            if (retryCount < maxRetries) {
+                                bodyEl.innerHTML = `<div style="text-align: center; padding: 40px;">
+                                    <p style="color: #ff9800;">加载失败，正在重试... (${retryCount + 1}/${maxRetries})</p>
+                                    <p style="font-size: 12px; color: #999;">${lastError}</p>
+                                </div>`;
+                                await sleep(1500); // 等待1.5秒后重试
+                            }
+                        }
+                    } catch (error) {
+                        lastError = error.message;
+                        if (retryCount < maxRetries) {
+                            bodyEl.innerHTML = `<div style="text-align: center; padding: 40px;">
+                                <p style="color: #ff9800;">网络错误，正在重试... (${retryCount + 1}/${maxRetries})</p>
+                                <p style="font-size: 12px; color: #999;">${lastError}</p>
+                            </div>`;
+                            await sleep(1500); // 等待1.5秒后重试
+                        }
+                    }
+                    retryCount++;
                 }
-            } catch (error) {
-                console.error('加载协议失败:', error);
-                bodyEl.innerHTML = '<div style="text-align: center; padding: 40px; color: #ff4d4f;">加载失败，请稍后重试</div>';
+
+                // 所有重试都失败
+                bodyEl.innerHTML = `<div style="text-align: center; padding: 40px;">
+                    <p style="color: #ff4d4f; font-size: 16px; margin-bottom: 10px;">加载失败</p>
+                    <p style="font-size: 13px; color: #666; margin-bottom: 15px;">${lastError || '未知错误'}</p>
+                    <button onclick="retryLoadAgreement('${type}')" style="padding: 8px 20px; background: #12b7f5; color: white; border: none; border-radius: 4px; cursor: pointer;">点击重试</button>
+                </div>`;
             }
+
+            function sleep(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+
+            // 全局重试函数，供按钮调用
+            window.retryLoadAgreement = function(type) {
+                loadAgreementWithRetry(type, bodyEl, 3);
+            };
         }
 
         // 设置滚动监听
