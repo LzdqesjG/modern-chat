@@ -599,423 +599,192 @@
             return true;
         }
 
-        // 协议预览功能
-        const agreements = {
-            terms: {
-                title: '用户协议',
-                url: 'Agreement/terms_of_service.md'
+        // 协议预览功能 - 重构版
+        const AgreementManager = {
+            agreements: {
+                terms: { title: '用户协议', url: 'Agreement/terms_of_service.md' },
+                privacy: { title: '隐私协议', url: 'Agreement/privacy_policy.md' }
             },
-            privacy: {
-                title: '隐私协议',
-                url: 'Agreement/privacy_policy.md'
-            }
-        };
+            readStatus: { terms: false, privacy: false },
+            currentType: null,
+            animationId: null,
+            duration: 20000,
 
-        let currentAgreement = null;
-        let hasReadToBottom = {
-            terms: false,
-            privacy: false
-        };
-        let scrollAnimationId = null; // 用于取消动画
+            getElements() {
+                return {
+                    modal: document.getElementById('agreementModal'),
+                    title: document.getElementById('modalTitle'),
+                    body: document.getElementById('modalBody'),
+                    agreeBtn: document.getElementById('agreeBtn'),
+                    progressFill: document.getElementById('progressFill'),
+                    progressText: document.getElementById('progressText'),
+                    timerText: document.getElementById('timerText'),
+                    readProgress: document.getElementById('readProgress'),
+                    agreementStatus: document.getElementById('agreementStatus'),
+                    registerBtn: document.getElementById('registerBtn')
+                };
+            },
 
-        // 平滑自动滚动函数 - 在20秒内完成，更慢、更平滑
-        function startAutoScroll(contentEl, progressFill, progressText, timerText, readProgress, type, agreeBtn) {
-            const scrollHeight = contentEl.scrollHeight;
-            const clientHeight = contentEl.clientHeight;
-            const maxScroll = scrollHeight - clientHeight;
+            async show(type) {
+                this.currentType = type;
+                const el = this.getElements();
+                const agreement = this.agreements[type];
 
-            if (maxScroll <= 0) {
-                // 内容不够长，直接标记为完成
-                hasReadToBottom[type] = true;
-                completeReading(timerText, progressFill, progressText, readProgress, agreeBtn, type);
-                return;
-            }
+                el.title.textContent = agreement.title;
+                el.body.innerHTML = '<div style="text-align: center; padding: 40px;">加载中...</div>';
+                this.resetProgress(el);
 
-            const duration = 20000; // 20秒，更慢
-            const startTime = performance.now();
-            const startScroll = contentEl.scrollTop;
-
-            function scroll() {
-                const currentTime = performance.now();
-                const elapsed = currentTime - startTime;
-                const progress = Math.min(elapsed / duration, 1);
-
-                // 使用更平滑的三次贝塞尔缓动函数
-                const easeProgress = easeInOutCubic(progress);
-
-                const targetScroll = startScroll + (maxScroll - startScroll) * easeProgress;
-                contentEl.scrollTop = targetScroll;
-
-                // 更新进度条
-                const scrollPercent = Math.min(100, Math.round((targetScroll / maxScroll) * 100));
-                progressFill.style.width = scrollPercent + '%';
-                progressText.textContent = scrollPercent + '%';
-
-                // 更新倒计时
-                const remainingTime = Math.ceil((duration - elapsed) / 1000);
-                if (remainingTime > 0) {
-                    timerText.textContent = remainingTime + '秒';
-                }
-
-                if (progress < 1) {
-                    scrollAnimationId = requestAnimationFrame(scroll);
+                if (this.readStatus[type]) {
+                    this.setCompleted(el);
                 } else {
-                    // 滚动完成
-                    hasReadToBottom[type] = true;
-                    completeReading(timerText, progressFill, progressText, readProgress, agreeBtn, type);
-                    // 滚动完成后启用用户手动滚动
-                    enableUserScroll(contentEl, progressFill, progressText);
+                    el.agreeBtn.disabled = true;
+                    el.agreeBtn.textContent = '请先完整阅读协议';
                 }
-            }
 
-            scrollAnimationId = requestAnimationFrame(scroll);
-        }
+                el.modal.classList.add('active');
+                await this.loadContent(type, el);
+            },
 
-        // 三次贝塞尔缓动函数 - 更平滑
-        function easeInOutCubic(t) {
-            return t < 0.5 
-                ? 4 * t * t * t 
-                : 1 - Math.pow(-2 * t + 2, 3) / 2;
-        }
+            resetProgress(el) {
+                el.progressFill.style.width = '0%';
+                el.progressText.textContent = '0%';
+                el.timerText.textContent = '滚动中...';
+                el.timerText.className = 'timer-text counting';
+                el.readProgress.classList.remove('completed');
+            },
 
-        // 完成阅读
-        function completeReading(timerText, progressFill, progressText, readProgress, agreeBtn, type) {
-            timerText.textContent = '完成';
-            timerText.className = 'timer-text completed';
-            progressFill.style.width = '100%';
-            progressText.textContent = '100%';
-            readProgress.classList.add('completed');
-            agreeBtn.disabled = false;
-            agreeBtn.textContent = '已阅读并同意';
-            checkAgreementStatus(type);
-        }
+            setCompleted(el) {
+                el.progressFill.style.width = '100%';
+                el.progressText.textContent = '100%';
+                el.timerText.textContent = '完成';
+                el.timerText.className = 'timer-text completed';
+                el.readProgress.classList.add('completed');
+                el.agreeBtn.disabled = false;
+                el.agreeBtn.textContent = '已阅读并同意';
+            },
 
-        // 启用用户手动滚动
-        function enableUserScroll(contentEl, progressFill, progressText) {
-            contentEl.style.overflow = 'auto'; // 确保可以滚动
-            contentEl.onscroll = function() {
-                const scrollHeight = contentEl.scrollHeight;
-                const clientHeight = contentEl.clientHeight;
-                const maxScroll = scrollHeight - clientHeight;
-                const scrollTop = contentEl.scrollTop;
-                const scrollPercent = Math.min(100, Math.round((scrollTop / maxScroll) * 100));
-                progressFill.style.width = scrollPercent + '%';
-                progressText.textContent = scrollPercent + '%';
-            };
-        }
-
-        // 显示协议弹窗
-        async function showModal(type) {
-            currentAgreement = type;
-            const modal = document.getElementById('agreementModal');
-            const titleEl = document.getElementById('modalTitle');
-            const bodyEl = document.getElementById('modalBody');
-            const agreeBtn = document.getElementById('agreeBtn');
-            const progressFill = document.getElementById('progressFill');
-            const progressText = document.getElementById('progressText');
-            const timerText = document.getElementById('timerText');
-            const readProgress = document.getElementById('readProgress');
-
-            titleEl.textContent = agreements[type].title;
-            bodyEl.innerHTML = '<div style="text-align: center; padding: 40px;">加载中...</div>';
-
-            // 重置进度
-            progressFill.style.width = '0%';
-            progressText.textContent = '0%';
-            timerText.textContent = '滚动中...';
-            timerText.className = 'timer-text counting';
-            readProgress.classList.remove('completed');
-
-            if (hasReadToBottom[type]) {
-                agreeBtn.disabled = false;
-                agreeBtn.textContent = '已阅读并同意';
-                timerText.textContent = '完成';
-                timerText.className = 'timer-text completed';
-            } else {
-                agreeBtn.disabled = true;
-                agreeBtn.textContent = '请先完整阅读协议';
-            }
-
-            modal.classList.add('active');
-
-            // 使用重试机制加载协议
-            await loadAgreementWithRetry(type, bodyEl, 3); // 最多重试3次
-
-            async function loadAgreementWithRetry(type, bodyEl, maxRetries) {
-                let retryCount = 0;
-                let lastError = null;
-
-                while (retryCount <= maxRetries) {
+            async loadContent(type, el, retries = 3) {
+                for (let i = 0; i <= retries; i++) {
                     try {
-                        bodyEl.innerHTML = '<div style="text-align: center; padding: 40px;">加载中...</div>';
-                        
-                        const response = await fetch(agreements[type].url);
+                        el.body.innerHTML = '<div style="text-align: center; padding: 40px;">加载中...</div>';
+                        const response = await fetch(this.agreements[type].url);
                         if (response.ok) {
                             const content = await response.text();
-                            bodyEl.innerHTML = renderMarkdown(content);
-
-                            // 启动自动滚动
-                            if (!hasReadToBottom[type]) {
-                                // 取消之前的动画
-                                if (scrollAnimationId) {
-                                    cancelAnimationFrame(scrollAnimationId);
-                                }
-                                // 启动新的平滑滚动
-                                startAutoScroll(bodyEl, progressFill, progressText, timerText, readProgress, type, agreeBtn);
-                            } else {
-                                // 已完成阅读
-                                timerText.textContent = '完成';
-                                timerText.className = 'timer-text completed';
-                                progressFill.style.width = '100%';
-                                progressText.textContent = '100%';
-                                readProgress.classList.add('completed');
-                                agreeBtn.disabled = false;
-                                agreeBtn.textContent = '已阅读并同意';
-                            }
+                            el.body.innerHTML = this.renderMarkdown(content);
                             
-                            return; // 成功加载，退出函数
-                        } else {
-                            lastError = `HTTP错误: ${response.status}`;
-                            if (retryCount < maxRetries) {
-                                bodyEl.innerHTML = `<div style="text-align: center; padding: 40px;">
-                                    <p style="color: #ff9800;">加载失败，正在重试... (${retryCount + 1}/${maxRetries})</p>
-                                    <p style="font-size: 12px; color: #999;">${lastError}</p>
-                                </div>`;
-                                await sleep(1500); // 等待1.5秒后重试
+                            if (!this.readStatus[type]) {
+                                this.startScroll(el.body, el, type);
+                            } else {
+                                this.setCompleted(el);
                             }
+                            return;
                         }
-                    } catch (error) {
-                        lastError = error.message;
-                        if (retryCount < maxRetries) {
-                            bodyEl.innerHTML = `<div style="text-align: center; padding: 40px;">
-                                <p style="color: #ff9800;">网络错误，正在重试... (${retryCount + 1}/${maxRetries})</p>
-                                <p style="font-size: 12px; color: #999;">${lastError}</p>
-                            </div>`;
-                            await sleep(1500); // 等待1.5秒后重试
-                        }
+                    } catch (e) {
+                        if (i < retries) await new Promise(r => setTimeout(r, 1500));
                     }
-                    retryCount++;
+                }
+                el.body.innerHTML = '<div style="text-align: center; padding: 40px;"><p style="color: #ff4d4f;">加载失败</p><button onclick="AgreementManager.retry()" style="margin-top: 15px; padding: 8px 20px; background: #12b7f5; color: white; border: none; border-radius: 4px; cursor: pointer;">重试</button></div>';
+            },
+
+            async retry() {
+                const el = this.getElements();
+                await this.loadContent(this.currentType, el);
+            },
+
+            startScroll(container, el, type) {
+                const maxScroll = container.scrollHeight - container.clientHeight;
+                if (maxScroll <= 0) {
+                    this.complete(type, el);
+                    return;
                 }
 
-                // 所有重试都失败
-                bodyEl.innerHTML = `<div style="text-align: center; padding: 40px;">
-                    <p style="color: #ff4d4f; font-size: 16px; margin-bottom: 10px;">加载失败</p>
-                    <p style="font-size: 13px; color: #666; margin-bottom: 15px;">${lastError || '未知错误'}</p>
-                    <button onclick="retryLoadAgreement('${type}')" style="padding: 8px 20px; background: #12b7f5; color: white; border: none; border-radius: 4px; cursor: pointer;">点击重试</button>
-                </div>`;
-            }
+                const startTime = performance.now();
+                const animate = (now) => {
+                    const progress = Math.min((now - startTime) / this.duration, 1);
+                    const eased = progress < 0.5 ? 4 * progress ** 3 : 1 - (-2 * progress + 2) ** 3 / 2;
+                    
+                    container.scrollTop = maxScroll * eased;
+                    const percent = Math.round(eased * 100);
+                    el.progressFill.style.width = percent + '%';
+                    el.progressText.textContent = percent + '%';
+                    
+                    const remaining = Math.ceil((this.duration - (now - startTime)) / 1000);
+                    if (remaining > 0) el.timerText.textContent = remaining + '秒';
 
-            function sleep(ms) {
-                return new Promise(resolve => setTimeout(resolve, ms));
-            }
-
-            // 全局重试函数，供按钮调用
-            window.retryLoadAgreement = function(type) {
-                loadAgreementWithRetry(type, bodyEl, 3);
-            };
-        }
-
-        // 设置滚动监听
-        function setupScrollListener(type) {
-            const bodyEl = document.getElementById('modalBody');
-            const progressFill = document.getElementById('progressFill');
-            const progressText = document.getElementById('progressText');
-            const agreeBtn = document.getElementById('agreeBtn');
-            const readProgress = document.getElementById('readProgress');
-
-            bodyEl.onscroll = function() {
-                const scrollTop = bodyEl.scrollTop;
-                const scrollHeight = bodyEl.scrollHeight;
-                const clientHeight = bodyEl.clientHeight;
-
-                // 计算滚动百分比
-                const scrollPercent = Math.min(100, Math.round((scrollTop / (scrollHeight - clientHeight)) * 100));
-
-                progressFill.style.width = scrollPercent + '%';
-                progressText.textContent = scrollPercent + '%';
-
-                // 判断是否滚动到底部（允许5px误差）
-                if (scrollTop + clientHeight >= scrollHeight - 5 && !hasReadToBottom[type]) {
-                    hasReadToBottom[type] = true;
-                    readProgress.classList.add('completed');
-                    checkAgreementStatus(type);
-                }
-            };
-        }
-
-        // 检查协议状态
-        function checkAgreementStatus(type) {
-            const agreeBtn = document.getElementById('agreeBtn');
-
-            // 检查当前协议是否阅读完成
-            if (hasReadToBottom[type]) {
-                agreeBtn.disabled = false;
-                agreeBtn.textContent = '已阅读并同意';
-            }
-
-            // 检查是否两个协议都阅读完成
-            const bothRead = hasReadToBottom.terms && hasReadToBottom.privacy;
-
-            const agreementStatus = document.getElementById('agreementStatus');
-            const registerBtn = document.getElementById('registerBtn');
-
-            if (bothRead) {
-                agreementStatus.textContent = '（已同意）';
-                agreementStatus.parentElement.classList.add('completed');
-                registerBtn.disabled = false;
-                registerBtn.textContent = '注册';
-            } else {
-                let remaining = [];
-                if (!hasReadToBottom.terms) {
-                    remaining.push('用户协议');
-                }
-                if (!hasReadToBottom.privacy) {
-                    remaining.push('隐私协议');
-                }
-                agreementStatus.textContent = `（还需阅读：${remaining.join('、')}）`;
-                agreementStatus.parentElement.classList.remove('completed');
-                registerBtn.disabled = true;
-                registerBtn.textContent = '请先同意协议';
-            }
-        }
-
-        // 关闭弹窗
-        function closeModal() {
-            // 取消滚动动画
-            if (scrollAnimationId) {
-                cancelAnimationFrame(scrollAnimationId);
-                scrollAnimationId = null;
-            }
-
-            document.getElementById('agreementModal').classList.remove('active');
-            currentAgreement = null;
-        }
-
-        // 同意并关闭
-        function agreeAndClose() {
-            closeModal();
-        }
-
-        // 完整的 Markdown 渲染
-        function renderMarkdown(text) {
-            // 预处理：处理表格
-            let lines = text.split('\n');
-            let inTable = false;
-            let tableHtml = '';
-            let result = [];
-
-            for (let i = 0; i < lines.length; i++) {
-                let line = lines[i];
-
-                // 检测表格
-                if (line.match(/^\|(.+)\|$/)) {
-                    if (!inTable) {
-                        inTable = true;
-                        tableHtml = '<table style="width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 13px;">';
-                    }
-
-                    // 处理表头分隔线
-                    if (line.match(/^\|[-\s|:]+\|$/)) {
-                        continue;
-                    }
-
-                    // 解析单元格
-                    let cells = line.split('|').filter(cell => cell.trim() !== '');
-                    let isFirstRow = (i > 0 && !lines[i-1].match(/^\|(.+)\|$/));
-
-                    if (isFirstRow || tableHtml.includes('<thead>') === false) {
-                        // 表头
-                        if (!tableHtml.includes('<thead>')) {
-                            tableHtml += '<thead><tr>';
-                            cells.forEach(cell => {
-                                tableHtml += `<th style="border: 1px solid #ddd; padding: 12px; text-align: left; background: #f5f5f5; font-weight: 600;">${cell.trim()}</th>`;
-                            });
-                            tableHtml += '</tr></thead><tbody>';
-                        } else {
-                            // 表格行
-                            tableHtml += '<tr>';
-                            cells.forEach(cell => {
-                                tableHtml += `<td style="border: 1px solid #ddd; padding: 10px;">${cell.trim()}</td>`;
-                            });
-                            tableHtml += '</tr>';
-                        }
+                    if (progress < 1) {
+                        this.animationId = requestAnimationFrame(animate);
                     } else {
-                        // 表格行
-                        tableHtml += '<tr>';
-                        cells.forEach(cell => {
-                            tableHtml += `<td style="border: 1px solid #ddd; padding: 10px;">${cell.trim()}</td>`;
-                        });
-                        tableHtml += '</tr>';
+                        this.complete(type, el);
                     }
+                };
+                this.animationId = requestAnimationFrame(animate);
+            },
+
+            complete(type, el) {
+                this.readStatus[type] = true;
+                this.setCompleted(el);
+                this.updateMainStatus(el);
+            },
+
+            updateMainStatus(el) {
+                const bothRead = this.readStatus.terms && this.readStatus.privacy;
+                if (bothRead) {
+                    el.agreementStatus.textContent = '（已同意）';
+                    el.agreementStatus.parentElement.classList.add('completed');
+                    el.registerBtn.disabled = false;
+                    el.registerBtn.textContent = '注册';
                 } else {
-                    if (inTable) {
-                        tableHtml += '</tbody></table>';
-                        result.push(tableHtml);
-                        tableHtml = '';
-                        inTable = false;
-                    }
-                    result.push(line);
+                    const remaining = [];
+                    if (!this.readStatus.terms) remaining.push('用户协议');
+                    if (!this.readStatus.privacy) remaining.push('隐私协议');
+                    el.agreementStatus.textContent = `（还需阅读：${remaining.join('、')}）`;
+                    el.agreementStatus.parentElement.classList.remove('completed');
+                    el.registerBtn.disabled = true;
+                    el.registerBtn.textContent = '请先同意协议';
                 }
+            },
+
+            close() {
+                if (this.animationId) {
+                    cancelAnimationFrame(this.animationId);
+                    this.animationId = null;
+                }
+                this.getElements().modal.classList.remove('active');
+                this.currentType = null;
+            },
+
+            agree() {
+                this.close();
+            },
+
+            renderMarkdown(text) {
+                return text
+                    .replace(/^###### (.+)$/gm, '<h6 style="font-size: 14px; color: #666; margin: 15px 0 8px; font-weight: 600;">$1</h6>')
+                    .replace(/^##### (.+)$/gm, '<h5 style="font-size: 15px; color: #555; margin: 18px 0 10px; font-weight: 600;">$1</h5>')
+                    .replace(/^#### (.+)$/gm, '<h4 style="font-size: 16px; color: #444; margin: 20px 0 12px; font-weight: 600;">$1</h4>')
+                    .replace(/^### (.+)$/gm, '<h3 style="font-size: 18px; color: #333; margin: 22px 0 14px; font-weight: 600; border-bottom: 2px solid #e0e0e0; padding-bottom: 8px;">$1</h3>')
+                    .replace(/^## (.+)$/gm, '<h2 style="font-size: 20px; color: #333; margin: 25px 0 16px; font-weight: 600; border-bottom: 2px solid #12b7f5; padding-bottom: 10px;">$1</h2>')
+                    .replace(/^# (.+)$/gm, '<h1 style="font-size: 24px; color: #333; margin: 30px 0 20px; font-weight: 600; text-align: center;">$1</h1>')
+                    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                    .replace(/~~(.+?)~~/g, '<del>$1</del>')
+                    .replace(/`(.+?)`/g, '<code style="background: #f5f5f5; padding: 2px 6px; border-radius: 3px; font-family: Consolas, monospace;">$1</code>')
+                    .replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre style="background: #f8f9fa; padding: 16px; border-radius: 8px; overflow-x: auto; font-family: Consolas, monospace; font-size: 13px;"><code>$2</code></pre>')
+                    .replace(/^(?:---|\*\*\*|___)$/gm, '<hr style="margin: 25px 0; border: none; border-top: 2px solid #e0e0e0;">')
+                    .replace(/^> (.+)$/gm, '<blockquote style="border-left: 4px solid #12b7f5; padding: 12px 16px; margin: 15px 0; background: #f0f9ff; color: #555;">$1</blockquote>')
+                    .replace(/^- (.+)$/gm, '<li style="margin: 6px 0;">$1</li>')
+                    .replace(/(<li.*<\/li>\n?)+/g, '<ul style="margin: 15px 0; padding-left: 28px;">$&</ul>')
+                    .replace(/^(\d+)\. (.+)$/gm, '<li style="margin: 6px 0;">$2</li>')
+                    .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" style="color: #12b7f5;">$1</a>')
+                    .replace(/!\[(.+?)\]\((.+?)\)/g, '<img src="$2" alt="$1" style="max-width: 100%; border-radius: 8px; margin: 15px 0;">')
+                    .replace(/^([^<\n][\s\S]*?)$/gm, (m) => m.trim() && !m.match(/^<(h|ul|ol|li|bl|pr|ta)/) ? '<p style="margin: 12px 0; line-height: 1.8;">' + m + '</p>' : m);
             }
+        };
 
-            if (inTable) {
-                tableHtml += '</tbody></table>';
-                result.push(tableHtml);
-            }
-
-            text = result.join('\n');
-
-            return text
-                // 标题（添加更好的样式）
-                .replace(/^###### (.+)$/gm, '<h6 style="font-size: 14px; color: #666; margin: 15px 0 8px; font-weight: 600;">$1</h6>')
-                .replace(/^##### (.+)$/gm, '<h5 style="font-size: 15px; color: #555; margin: 18px 0 10px; font-weight: 600;">$1</h5>')
-                .replace(/^#### (.+)$/gm, '<h4 style="font-size: 16px; color: #444; margin: 20px 0 12px; font-weight: 600;">$1</h4>')
-                .replace(/^### (.+)$/gm, '<h3 style="font-size: 18px; color: #333; margin: 22px 0 14px; font-weight: 600; border-bottom: 2px solid #e0e0e0; padding-bottom: 8px;">$1</h3>')
-                .replace(/^## (.+)$/gm, '<h2 style="font-size: 20px; color: #333; margin: 25px 0 16px; font-weight: 600; border-bottom: 2px solid #12b7f5; padding-bottom: 10px;">$1</h2>')
-                .replace(/^# (.+)$/gm, '<h1 style="font-size: 24px; color: #333; margin: 30px 0 20px; font-weight: 600; text-align: center;">$1</h1>')
-                // 粗体和斜体
-                .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-                .replace(/\*\*(.+?)\*\*/g, '<strong style="font-weight: 600;">$1</strong>')
-                .replace(/\*(.+?)\*/g, '<em>$1</em>')
-                .replace(/__(.+?)__/g, '<strong style="font-weight: 600;">$1</strong>')
-                .replace(/_(.+?)_/g, '<em>$1</em>')
-                // 删除线
-                .replace(/~~(.+?)~~/g, '<del style="text-decoration: line-through; color: #999;">$1</del>')
-                // 行内代码
-                .replace(/`(.+?)`/g, '<code style="background: #f5f5f5; padding: 2px 6px; border-radius: 4px; font-family: Consolas, Monaco, monospace; font-size: 90%; color: #e83e8c;">$1</code>')
-                // 代码块
-                .replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre style="background: #f8f9fa; padding: 16px; border-radius: 8px; overflow-x: auto; font-family: Consolas, Monaco, monospace; font-size: 13px; line-height: 1.6; border: 1px solid #e0e0e0;"><code>$2</code></pre>')
-                // 分隔线
-                .replace(/^(?:---|\*\*\*|___)$/gm, '<hr style="margin: 25px 0; border: none; border-top: 2px solid #e0e0e0;">')
-                // 引用块
-                .replace(/^> (.+)$/gm, '<blockquote style="border-left: 4px solid #12b7f5; padding: 12px 16px; margin: 15px 0; background: linear-gradient(to right, #f0f9ff, #ffffff); color: #555; font-style: italic;">$1</blockquote>')
-                // 无序列表
-                .replace(/^- (.+)$/gm, '<li style="margin: 6px 0;">$1</li>')
-                .replace(/(<li style="margin: 6px 0;">.*<\/li>\n?)+/g, '<ul style="margin: 15px 0; padding-left: 28px; list-style-type: disc;">$&</ul>')
-                // 有序列表
-                .replace(/^(\d+)\. (.+)$/gm, '<li style="margin: 6px 0;">$2</li>')
-                .replace(/(<li style="margin: 6px 0;">.*<\/li>\n?)+/g, function(match) {
-                    return match.includes('<ul') ? match : '<ol style="margin: 15px 0; padding-left: 28px; list-style-type: decimal;">' + match + '</ol>';
-                })
-                // 链接
-                .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color: #12b7f5; text-decoration: none; border-bottom: 1px solid transparent; transition: all 0.2s;">$1</a>')
-                // 图片
-                .replace(/!\[(.+?)\]\((.+?)\)/g, '<img src="$2" alt="$1" style="max-width: 100%; border-radius: 8px; margin: 15px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">')
-                // 段落（改进样式）
-                .replace(/^([^<\n][\s\S]*?)$/gm, function(match) {
-                    // 如果不是空行且不包含HTML标签，则包装为段落
-                    if (match.trim() && !match.match(/^<(h[1-6]|ul|ol|li|blockquote|pre|table|thead|tbody|tr|td|th|hr)/)) {
-                        return '<p style="margin: 12px 0; line-height: 1.8; color: #555;">' + match + '</p>';
-                    }
-                    return match;
-                })
-                // 清理空段落
-                .replace(/<p style="[^"]*">\s*<\/p>/g, '')
-                .replace(/<p style="[^"]*">(<h[1-6]|<ul|<ol|<blockquote|<pre|<table)/g, '$1')
-                .replace(/(<\/h[1-6]>|<\/ul>|<\/ol>|<\/blockquote>|<\/pre>|<\/table>)<p style="[^"]*">/g, '$1')
-                // 改进空行处理
-                .replace(/\n\n+/g, '\n\n');
-        }
+        // 全局函数兼容
+        function showModal(type) { AgreementManager.show(type); }
+        function closeModal() { AgreementManager.close(); }
+        function agreeAndClose() { AgreementManager.agree(); }
 
         // 点击遮罩层关闭弹窗
         document.getElementById('agreementModal').addEventListener('click', (e) => {
