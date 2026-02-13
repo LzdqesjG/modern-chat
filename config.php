@@ -4,27 +4,34 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// 读取.env文件（如果存在）
+// 缓存.env文件内容
+$env_vars = [];
 $env_file = __DIR__ . '/.env';
 if (file_exists($env_file)) {
     $lines = file($env_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
     foreach ($lines as $line) {
         // 跳过注释行
-        if (str_starts_with(trim($line), '#')) {
+        $trimmed = trim($line);
+        if ($trimmed === '' || str_starts_with($trimmed, '#')) {
             continue;
         }
         
         // 解析键值对
-        list($key, $value) = explode('=', $line, 2);
-        $key = trim($key);
-        $value = trim($value);
+        $parts = explode('=', $line, 2);
+        if (count($parts) !== 2) continue;
+        
+        $key = trim($parts[0]);
+        $value = trim($parts[1]);
         
         // 移除引号（如果有）
-        if ((str_starts_with($value, '"') && str_ends_with($value, '"')) || (str_starts_with($value, "'") && str_ends_with($value, "'"))) {
+        if ((str_starts_with($value, '"') && str_ends_with($value, '"')) || 
+            (str_starts_with($value, "'") && str_ends_with($value, "'"))) {
             $value = substr($value, 1, -1);
         }
         
-        // 设置环境变量（如果putenv函数可用）
+        $env_vars[$key] = $value;
+        
+        // 设置环境变量
         if (function_exists('putenv')) {
             putenv("$key=$value");
         }
@@ -33,54 +40,36 @@ if (file_exists($env_file)) {
 
 // 获取环境变量的辅助函数
 function getEnvVar($key, $default = '') {
-    // 尝试从超级全局变量获取
+    global $env_vars;
+    
+    // 1. 优先从环境变量缓存获取
+    if (isset($env_vars[$key])) {
+        return $env_vars[$key];
+    }
+    
+    // 2. 从 $_SERVER 获取
     if (isset($_SERVER[$key])) {
         return $_SERVER[$key];
     }
     
-    // 尝试从超级全局变量获取（小写形式）
-    if (isset($_SERVER[strtolower($key)])) {
-        return $_SERVER[strtolower($key)];
+    // 3. $_SERVER 小写形式
+    $lowerKey = strtolower($key);
+    if (isset($_SERVER[$lowerKey])) {
+        return $_SERVER[$lowerKey];
     }
     
-    // 尝试从超级全局变量获取（下划线转换为点）
-    $dot_key = str_replace('_', '.', strtolower($key));
-    if (isset($_SERVER[$dot_key])) {
-        return $_SERVER[$dot_key];
+    // 4. $_SERVER 下划线转点
+    $dotKey = str_replace('_', '.', $lowerKey);
+    if (isset($_SERVER[$dotKey])) {
+        return $_SERVER[$dotKey];
     }
     
-    // 如果getenv函数可用，尝试使用getenv获取
+    // 5. getenv 函数
     if (function_exists('getenv')) {
         $value = getenv($key);
         if ($value !== false) {
             return $value;
         }
-    }
-    
-    // 尝试从.env文件中读取（如果存在）
-    static $env_vars = null;
-    if ($env_vars === null) {
-        $env_file = __DIR__ . '/.env';
-        $env_vars = [];
-        if (file_exists($env_file)) {
-            $lines = file($env_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-            foreach ($lines as $line) {
-                if (str_starts_with(trim($line), '#')) {
-                    continue;
-                }
-                list($env_key, $env_value) = explode('=', $line, 2);
-                $env_key = trim($env_key);
-                $env_value = trim($env_value);
-                if ((str_starts_with($env_value, '"') && str_ends_with($env_value, '"')) || (str_starts_with($env_value, "'") && str_ends_with($env_value, "'"))) {
-                    $env_value = substr($env_value, 1, -1);
-                }
-                $env_vars[$env_key] = $env_value;
-            }
-        }
-    }
-    
-    if (isset($env_vars[$key])) {
-        return $env_vars[$key];
     }
     
     return $default;
