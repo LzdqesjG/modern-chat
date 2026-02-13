@@ -38,14 +38,35 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // 包含核心文件
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../db.php';
-require_once __DIR__ . '/../User.php';
-require_once __DIR__ . '/../Friend.php';
-require_once __DIR__ . '/../Message.php';
-require_once __DIR__ . '/../Group.php';
-require_once __DIR__ . '/../FileUpload.php';
-require_once __DIR__ . '/../RSAUtil.php';
+try {
+    require_once __DIR__ . '/../config.php';
+    require_once __DIR__ . '/../db.php';
+    require_once __DIR__ . '/../User.php';
+    require_once __DIR__ . '/../Friend.php';
+    require_once __DIR__ . '/../Message.php';
+    require_once __DIR__ . '/../Group.php';
+    require_once __DIR__ . '/../FileUpload.php';
+    require_once __DIR__ . '/../RSAUtil.php';
+} catch (Throwable $e) {
+    error_log("API 文件加载失败: " . $e->getMessage());
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'message' => '服务器初始化失败: 文件加载错误'
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// 检查数据库连接
+if ($conn === null) {
+    error_log("API 数据库连接为空");
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'message' => '数据库连接失败，请检查数据库配置'
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 // 初始化核心服务类
 try {
@@ -54,8 +75,14 @@ try {
     $message = new Message($conn);
     $group = new Group($conn);
     $fileUpload = new FileUpload($conn);
-} catch (Exception $e) {
-    response_error('服务器初始化失败: ' . $e->getMessage(), 500);
+} catch (Throwable $e) {
+    error_log("API 服务初始化失败: " . $e->getMessage());
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'message' => '服务器初始化失败: ' . $e->getMessage()
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
 }
 
 // ==========================================
@@ -650,7 +677,17 @@ try {
             
             // 验证文件类型
             $allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+            
+            // 检查 fileinfo 扩展是否可用
+            if (!function_exists('finfo_open')) {
+                response_error('服务器缺少 fileinfo 扩展，无法验证文件类型');
+            }
+            
             $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            if (!$finfo) {
+                response_error('无法创建文件信息对象');
+            }
+            
             $mime_type = finfo_file($finfo, $file['tmp_name']);
             finfo_close($finfo);
             

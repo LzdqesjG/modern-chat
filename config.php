@@ -1,4 +1,17 @@
 <?php
+// PHP 8.0 以下版本的兼容性函数
+if (!function_exists('str_starts_with')) {
+    function str_starts_with($haystack, $needle) {
+        return (string)$needle !== '' && strncmp($haystack, $needle, strlen($needle)) === 0;
+    }
+}
+
+if (!function_exists('str_ends_with')) {
+    function str_ends_with($haystack, $needle) {
+        return $needle !== '' && substr($haystack, -strlen($needle)) === (string)$needle;
+    }
+}
+
 // 启用会话，必须在任何输出之前调用
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
