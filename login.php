@@ -740,30 +740,18 @@ require_once 'db.php';
         <?php } ?>
     </div>
 
-    <!-- 协议预览弹窗 -->
-    <div class="modal-overlay" id="agreementModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 id="modalTitle">协议标题</h2>
-                <button class="modal-close" onclick="closeModal()">×</button>
+    <!-- 协议模态框 -->
+    <div id="agreement-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.3s;">
+        <div style="background: white; width: 80%; max-width: 800px; height: 80%; border-radius: 12px; display: flex; flex-direction: column; box-shadow: 0 10px 25px rgba(0,0,0,0.2); transform: scale(0.9); transition: transform 0.3s;">
+            <div style="padding: 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
+                <h3 id="agreement-title" style="margin: 0; font-size: 18px; color: #333;">协议条款</h3>
+                <button onclick="closeAgreement()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #999; padding: 0 10px;">&times;</button>
             </div>
-            <div class="read-progress" id="readProgress">
-                <div class="read-progress-info">
-                    <span class="check-icon">✓</span>
-                    <span>阅读进度</span>
-                    <span id="timeRemaining" style="font-size: 12px; color: #999;">还需阅读 10 秒</span>
-                </div>
-                <div class="read-progress-bar">
-                    <div class="read-progress-fill" id="progressFill"></div>
-                </div>
-                <span class="read-progress-text" id="progressText">0%</span>
+            <div style="flex: 1; overflow-y: auto; padding: 30px; background: #f9f9f9;">
+                <div id="agreement-content" style="white-space: pre-wrap; font-family: inherit; color: #444; line-height: 1.8; font-size: 15px;"></div>
             </div>
-            <div class="modal-body" id="modalBody">
-                协议内容加载中...
-            </div>
-            <div class="modal-footer">
-                <button class="modal-btn modal-btn-secondary" onclick="closeModal()">关闭</button>
-                <button class="modal-btn modal-btn-primary" id="agreeBtn" disabled onclick="agreeAndClose()">请先完整阅读协议</button>
+            <div style="padding: 20px; border-top: 1px solid #eee; text-align: right; background: white; border-radius: 0 0 12px 12px;">
+                <button onclick="closeAgreement()" class="btn btn-primary">我已阅读并关闭</button>
             </div>
         </div>
     </div>
@@ -1114,196 +1102,71 @@ require_once 'db.php';
             }
         });
 
-        // 协议预览功能 - 重构版
-        const AgreementManager = {
-            agreements: {
-                terms: { title: '用户协议', url: 'Agreement/terms_of_service.md' },
-                privacy: { title: '隐私协议', url: 'Agreement/privacy_policy.md' }
-            },
-            readStatus: { terms: false, privacy: false },
-            currentType: null,
-            animationId: null,
-            duration: 20000,
+        // 协议相关函数
+        function showModal(type) {
+            showAgreement(type);
+        }
+        
+        function showAgreement(type) {
+            const modal = document.getElementById('agreement-modal');
+            const title = document.getElementById('agreement-title');
+            const content = document.getElementById('agreement-content');
+            const modalContent = modal.querySelector('div');
+            
+            title.textContent = type === 'terms' ? '用户协议' : '隐私协议';
+            content.innerHTML = '<div style="text-align: center; padding: 50px; color: #999;">正在加载协议内容...</div>';
+            content.style.textAlign = 'center';
+            content.style.paddingTop = '50px';
+            
+            modal.style.display = 'flex';
+            modal.offsetHeight;
+            modal.style.opacity = '1';
+            modalContent.style.transform = 'scale(1)';
+            
+            const url = type === 'terms' ? 'Agreement/terms_of_service.md' : 'Agreement/privacy_policy.md';
+            
+            fetch(url)
+                .then(res => {
+                    if (!res.ok) throw new Error('文件未找到');
+                    return res.text();
+                })
+                .then(text => {
+                    content.style.textAlign = 'left';
+                    content.style.paddingTop = '0';
+                    content.textContent = text;
+                })
+                .catch(err => {
+                    content.innerHTML = '<div style="color: #ff4d4f; text-align: center;">加载失败: ' + err.message + '</div>';
+                });
+        }
 
-            getElements() {
-                return {
-                    modal: document.getElementById('agreementModal'),
-                    title: document.getElementById('modalTitle'),
-                    body: document.getElementById('modalBody'),
-                    agreeBtn: document.getElementById('agreeBtn'),
-                    progressFill: document.getElementById('progressFill'),
-                    progressText: document.getElementById('progressText'),
-                    timerText: document.getElementById('timeRemaining'),
-                    readProgress: document.getElementById('readProgress')
-                };
-            },
+        function closeAgreement() {
+            const modal = document.getElementById('agreement-modal');
+            const modalContent = modal.querySelector('div');
+            
+            modal.style.opacity = '0';
+            modalContent.style.transform = 'scale(0.9)';
+            
+            setTimeout(() => {
+                modal.style.display = 'none';
+            }, 300);
+        }
 
-            async show(type) {
-                this.currentType = type;
-                const el = this.getElements();
-                const agreement = this.agreements[type];
+        function closeModal() {
+            closeAgreement();
+        }
 
-                el.title.textContent = agreement.title;
-                el.body.innerHTML = '<div style="text-align: center; padding: 40px;">加载中...</div>';
-                this.resetProgress(el);
-
-                if (this.readStatus[type]) {
-                    this.setCompleted(el);
-                } else {
-                    el.agreeBtn.disabled = true;
-                    el.agreeBtn.textContent = '请先完整阅读协议';
-                }
-
-                el.modal.classList.add('active');
-                await this.loadContent(type, el);
-            },
-
-            resetProgress(el) {
-                el.progressFill.style.width = '0%';
-                el.progressText.textContent = '0%';
-                el.timerText.textContent = '还需阅读 20 秒';
-                el.readProgress.classList.remove('completed');
-            },
-
-            setCompleted(el) {
-                el.progressFill.style.width = '100%';
-                el.progressText.textContent = '100%';
-                el.timerText.textContent = '已完成阅读';
-                el.readProgress.classList.add('completed');
-                el.agreeBtn.disabled = false;
-                el.agreeBtn.textContent = '已阅读并同意';
-            },
-
-            async loadContent(type, el, retries = 3) {
-                for (let i = 0; i <= retries; i++) {
-                    try {
-                        el.body.innerHTML = '<div class="modal-body-content"><div style="text-align: center; padding: 40px;">加载中...</div></div>';
-                        const response = await fetch(this.agreements[type].url);
-                        if (response.ok) {
-                            const content = await response.text();
-                            const container = el.body.querySelector('.modal-body-content');
-                            container.innerHTML = this.renderMarkdown(content);
-                            
-                            if (!this.readStatus[type]) {
-                                this.startScroll(container, el, type);
-                            } else {
-                                this.setCompleted(el);
-                            }
-                            return;
-                        }
-                    } catch (e) {
-                        if (i < retries) await new Promise(r => setTimeout(r, 1500));
-                    }
-                }
-                el.body.innerHTML = '<div style="text-align: center; padding: 40px;"><p style="color: #ff4d4f;">加载失败</p><button onclick="AgreementManager.retry()" style="margin-top: 15px; padding: 8px 20px; background: #12b7f5; color: white; border: none; border-radius: 4px; cursor: pointer;">重试</button></div>';
-            },
-
-            async retry() {
-                const el = this.getElements();
-                await this.loadContent(this.currentType, el);
-            },
-
-            startScroll(container, el, type) {
-                // 确保容器可以滚动
-                container.style.overflow = 'auto';
-                
-                // 使用 setTimeout 确保 DOM 已渲染
-                setTimeout(() => {
-                    const maxScroll = container.scrollHeight - container.clientHeight;
-                    if (maxScroll <= 0) {
-                        this.complete(type, el);
-                        return;
-                    }
-                    this.animateScroll(container, el, type, maxScroll);
-                }, 100);
-            },
-
-            animateScroll(container, el, type, maxScroll) {
-                const startTime = performance.now();
-                const animate = (now) => {
-                    const progress = Math.min((now - startTime) / this.duration, 1);
-                    const eased = progress < 0.5 ? 4 * progress ** 3 : 1 - (-2 * progress + 2) ** 3 / 2;
-                    
-                    container.scrollTop = maxScroll * eased;
-                    const percent = Math.round(eased * 100);
-                    el.progressFill.style.width = percent + '%';
-                    el.progressText.textContent = percent + '%';
-                    
-                    const remaining = Math.ceil((this.duration - (now - startTime)) / 1000);
-                    if (remaining > 0) el.timerText.textContent = '还需阅读 ' + remaining + ' 秒';
-
-                    if (progress < 1) {
-                        this.animationId = requestAnimationFrame(animate);
-                    } else {
-                        this.complete(type, el);
-                    }
-                };
-                this.animationId = requestAnimationFrame(animate);
-            },
-
-            complete(type, el) {
-                this.readStatus[type] = true;
-                this.setCompleted(el);
-            },
-
-            close() {
-                if (this.animationId) {
-                    cancelAnimationFrame(this.animationId);
-                    this.animationId = null;
-                }
-                this.getElements().modal.classList.remove('active');
-                this.currentType = null;
-            },
-
-            agree() {
-                this.close();
-            },
-
-            canLogin() {
-                return this.readStatus.terms && this.readStatus.privacy;
-            },
-
-            renderMarkdown(text) {
-                return text
-                    .replace(/^###### (.+)$/gm, '<h6 style="font-size: 14px; color: #666; margin: 15px 0 8px; font-weight: 600;">$1</h6>')
-                    .replace(/^##### (.+)$/gm, '<h5 style="font-size: 15px; color: #555; margin: 18px 0 10px; font-weight: 600;">$1</h5>')
-                    .replace(/^#### (.+)$/gm, '<h4 style="font-size: 16px; color: #444; margin: 20px 0 12px; font-weight: 600;">$1</h4>')
-                    .replace(/^### (.+)$/gm, '<h3 style="font-size: 18px; color: #333; margin: 22px 0 14px; font-weight: 600; border-bottom: 2px solid #e0e0e0; padding-bottom: 8px;">$1</h3>')
-                    .replace(/^## (.+)$/gm, '<h2 style="font-size: 20px; color: #333; margin: 25px 0 16px; font-weight: 600; border-bottom: 2px solid #12b7f5; padding-bottom: 10px;">$1</h2>')
-                    .replace(/^# (.+)$/gm, '<h1 style="font-size: 24px; color: #333; margin: 30px 0 20px; font-weight: 600; text-align: center;">$1</h1>')
-                    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-                    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-                    .replace(/~~(.+?)~~/g, '<del>$1</del>')
-                    .replace(/`(.+?)`/g, '<code style="background: #f5f5f5; padding: 2px 6px; border-radius: 3px; font-family: Consolas, monospace;">$1</code>')
-                    .replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre style="background: #f8f9fa; padding: 16px; border-radius: 8px; overflow-x: auto; font-family: Consolas, monospace; font-size: 13px;"><code>$2</code></pre>')
-                    .replace(/^(?:---|\*\*\*|___)$/gm, '<hr style="margin: 25px 0; border: none; border-top: 2px solid #e0e0e0;">')
-                    .replace(/^> (.+)$/gm, '<blockquote style="border-left: 4px solid #12b7f5; padding: 12px 16px; margin: 15px 0; background: #f0f9ff; color: #555;">$1</blockquote>')
-                    .replace(/^- (.+)$/gm, '<li style="margin: 6px 0;">$1</li>')
-                    .replace(/(<li.*<\/li>\n?)+/g, '<ul style="margin: 15px 0; padding-left: 28px;">$&</ul>')
-                    .replace(/^(\d+)\. (.+)$/gm, '<li style="margin: 6px 0;">$2</li>')
-                    .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" style="color: #12b7f5;">$1</a>')
-                    .replace(/!\[(.+?)\]\((.+?)\)/g, '<img src="$2" alt="$1" style="max-width: 100%; border-radius: 8px; margin: 15px 0;">')
-                    .replace(/^([^<\n][\s\S]*?)$/gm, (m) => m.trim() && !m.match(/^<(h|ul|ol|li|bl|pr|ta)/) ? '<p style="margin: 12px 0; line-height: 1.8;">' + m + '</p>' : m);
-            }
-        };
-
-        // 全局函数兼容
-        function showModal(type) { AgreementManager.show(type); }
-        function closeModal() { AgreementManager.close(); }
-        function agreeAndClose() { AgreementManager.agree(); }
-        function canLogin() { return AgreementManager.canLogin(); }
-
-        // 点击遮罩层关闭弹窗
-        document.getElementById('agreementModal').addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal-overlay')) {
-                closeModal();
+        // 点击模态框背景关闭
+        document.getElementById('agreement-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeAgreement();
             }
         });
 
         // ESC键关闭弹窗
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
-                closeModal();
+                closeAgreement();
             }
         });
     </script>
