@@ -1115,49 +1115,123 @@
 
         // 完整的 Markdown 渲染
         function renderMarkdown(text) {
+            // 预处理：处理表格
+            let lines = text.split('\n');
+            let inTable = false;
+            let tableHtml = '';
+            let result = [];
+
+            for (let i = 0; i < lines.length; i++) {
+                let line = lines[i];
+
+                // 检测表格
+                if (line.match(/^\|(.+)\|$/)) {
+                    if (!inTable) {
+                        inTable = true;
+                        tableHtml = '<table style="width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 13px;">';
+                    }
+
+                    // 处理表头分隔线
+                    if (line.match(/^\|[-\s|:]+\|$/)) {
+                        continue;
+                    }
+
+                    // 解析单元格
+                    let cells = line.split('|').filter(cell => cell.trim() !== '');
+                    let isFirstRow = (i > 0 && !lines[i-1].match(/^\|(.+)\|$/));
+
+                    if (isFirstRow || tableHtml.includes('<thead>') === false) {
+                        // 表头
+                        if (!tableHtml.includes('<thead>')) {
+                            tableHtml += '<thead><tr>';
+                            cells.forEach(cell => {
+                                tableHtml += `<th style="border: 1px solid #ddd; padding: 12px; text-align: left; background: #f5f5f5; font-weight: 600;">${cell.trim()}</th>`;
+                            });
+                            tableHtml += '</tr></thead><tbody>';
+                        } else {
+                            // 表格行
+                            tableHtml += '<tr>';
+                            cells.forEach(cell => {
+                                tableHtml += `<td style="border: 1px solid #ddd; padding: 10px;">${cell.trim()}</td>`;
+                            });
+                            tableHtml += '</tr>';
+                        }
+                    } else {
+                        // 表格行
+                        tableHtml += '<tr>';
+                        cells.forEach(cell => {
+                            tableHtml += `<td style="border: 1px solid #ddd; padding: 10px;">${cell.trim()}</td>`;
+                        });
+                        tableHtml += '</tr>';
+                    }
+                } else {
+                    if (inTable) {
+                        tableHtml += '</tbody></table>';
+                        result.push(tableHtml);
+                        tableHtml = '';
+                        inTable = false;
+                    }
+                    result.push(line);
+                }
+            }
+
+            if (inTable) {
+                tableHtml += '</tbody></table>';
+                result.push(tableHtml);
+            }
+
+            text = result.join('\n');
+
             return text
-                // 标题
-                .replace(/^###### (.+)$/gm, '<h6>$1</h6>')
-                .replace(/^##### (.+)$/gm, '<h5>$1</h5>')
-                .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
-                .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-                .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-                .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-                // 分隔线
-                .replace(/^(?:---|\*\*\*|___)$/gm, '<hr style="margin: 20px 0; border: none; border-top: 1px solid #e0e0e0;">')
+                // 标题（添加更好的样式）
+                .replace(/^###### (.+)$/gm, '<h6 style="font-size: 14px; color: #666; margin: 15px 0 8px; font-weight: 600;">$1</h6>')
+                .replace(/^##### (.+)$/gm, '<h5 style="font-size: 15px; color: #555; margin: 18px 0 10px; font-weight: 600;">$1</h5>')
+                .replace(/^#### (.+)$/gm, '<h4 style="font-size: 16px; color: #444; margin: 20px 0 12px; font-weight: 600;">$1</h4>')
+                .replace(/^### (.+)$/gm, '<h3 style="font-size: 18px; color: #333; margin: 22px 0 14px; font-weight: 600; border-bottom: 2px solid #e0e0e0; padding-bottom: 8px;">$1</h3>')
+                .replace(/^## (.+)$/gm, '<h2 style="font-size: 20px; color: #333; margin: 25px 0 16px; font-weight: 600; border-bottom: 2px solid #12b7f5; padding-bottom: 10px;">$1</h2>')
+                .replace(/^# (.+)$/gm, '<h1 style="font-size: 24px; color: #333; margin: 30px 0 20px; font-weight: 600; text-align: center;">$1</h1>')
                 // 粗体和斜体
                 .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*\*(.+?)\*\*/g, '<strong style="font-weight: 600;">$1</strong>')
                 .replace(/\*(.+?)\*/g, '<em>$1</em>')
-                .replace(/__(.+?)__/g, '<strong>$1</strong>')
+                .replace(/__(.+?)__/g, '<strong style="font-weight: 600;">$1</strong>')
                 .replace(/_(.+?)_/g, '<em>$1</em>')
                 // 删除线
-                .replace(/~~(.+?)~~/g, '<del>$1</del>')
-                // 代码
-                .replace(/`(.+?)`/g, '<code style="background: #f5f5f5; padding: 2px 4px; border-radius: 3px; font-family: monospace;">$1</code>')
+                .replace(/~~(.+?)~~/g, '<del style="text-decoration: line-through; color: #999;">$1</del>')
+                // 行内代码
+                .replace(/`(.+?)`/g, '<code style="background: #f5f5f5; padding: 2px 6px; border-radius: 4px; font-family: Consolas, Monaco, monospace; font-size: 90%; color: #e83e8c;">$1</code>')
                 // 代码块
-                .replace(/```([\s\S]*?)```/g, '<pre style="background: #f5f5f5; padding: 16px; border-radius: 6px; overflow-x: auto; font-family: monospace; font-size: 13px; line-height: 1.5;"><code>$1</code></pre>')
-                // 引用
-                .replace(/^> (.+)$/gm, '<blockquote style="border-left: 4px solid #12b7f5; padding: 10px 15px; margin: 10px 0; background: #f8f9fa;">$1</blockquote>')
+                .replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre style="background: #f8f9fa; padding: 16px; border-radius: 8px; overflow-x: auto; font-family: Consolas, Monaco, monospace; font-size: 13px; line-height: 1.6; border: 1px solid #e0e0e0;"><code>$2</code></pre>')
+                // 分隔线
+                .replace(/^(?:---|\*\*\*|___)$/gm, '<hr style="margin: 25px 0; border: none; border-top: 2px solid #e0e0e0;">')
+                // 引用块
+                .replace(/^> (.+)$/gm, '<blockquote style="border-left: 4px solid #12b7f5; padding: 12px 16px; margin: 15px 0; background: linear-gradient(to right, #f0f9ff, #ffffff); color: #555; font-style: italic;">$1</blockquote>')
                 // 无序列表
-                .replace(/^- (.+)$/gm, '<li>$1</li>')
-                .replace(/(<li>.*<\/li>\n?)+/g, '<ul style="margin: 10px 0; padding-left: 25px;">$&</ul>')
+                .replace(/^- (.+)$/gm, '<li style="margin: 6px 0;">$1</li>')
+                .replace(/(<li style="margin: 6px 0;">.*<\/li>\n?)+/g, '<ul style="margin: 15px 0; padding-left: 28px; list-style-type: disc;">$&</ul>')
                 // 有序列表
-                .replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>')
-                .replace(/(<li>.*<\/li>\n?)+/g, function(match) {
-                    // 检查是否已经在 ul 中，如果不是，则包装为 ol
-                    return match.includes('<ul>') ? match : '<ol style="margin: 10px 0; padding-left: 25px;">' + match + '</ol>';
+                .replace(/^(\d+)\. (.+)$/gm, '<li style="margin: 6px 0;">$2</li>')
+                .replace(/(<li style="margin: 6px 0;">.*<\/li>\n?)+/g, function(match) {
+                    return match.includes('<ul') ? match : '<ol style="margin: 15px 0; padding-left: 28px; list-style-type: decimal;">' + match + '</ol>';
                 })
                 // 链接
-                .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color: #12b7f5; text-decoration: none;">$1</a>')
+                .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color: #12b7f5; text-decoration: none; border-bottom: 1px solid transparent; transition: all 0.2s;">$1</a>')
                 // 图片
-                .replace(/!\[(.+?)\]\((.+?)\)/g, '<img src="$2" alt="$1" style="max-width: 100%; border-radius: 6px; margin: 10px 0;">')
-                // 段落
-                .replace(/^([^<\n].+)$/gm, '<p>$1</p>')
+                .replace(/!\[(.+?)\]\((.+?)\)/g, '<img src="$2" alt="$1" style="max-width: 100%; border-radius: 8px; margin: 15px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">')
+                // 段落（改进样式）
+                .replace(/^([^<\n][\s\S]*?)$/gm, function(match) {
+                    // 如果不是空行且不包含HTML标签，则包装为段落
+                    if (match.trim() && !match.match(/^<(h[1-6]|ul|ol|li|blockquote|pre|table|thead|tbody|tr|td|th|hr)/)) {
+                        return '<p style="margin: 12px 0; line-height: 1.8; color: #555;">' + match + '</p>';
+                    }
+                    return match;
+                })
                 // 清理空段落
-                .replace(/<p><\/p>/g, '')
-                .replace(/<p>(<h[1-6]|<ul|<ol|<blockquote|<pre)/g, '$1')
-                .replace(/(<\/h[1-6]>|<\/ul>|<\/ol>|<\/blockquote>|<\/pre>)<\/p>/g, '$1');
+                .replace(/<p style="[^"]*">\s*<\/p>/g, '')
+                .replace(/<p style="[^"]*">(<h[1-6]|<ul|<ol|<blockquote|<pre|<table)/g, '$1')
+                .replace(/(<\/h[1-6]>|<\/ul>|<\/ol>|<\/blockquote>|<\/pre>|<\/table>)<p style="[^"]*">/g, '$1')
+                // 改进空行处理
+                .replace(/\n\n+/g, '\n\n');
         }
 
         // 点击遮罩层关闭弹窗
