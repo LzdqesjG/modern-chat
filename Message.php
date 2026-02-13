@@ -100,10 +100,18 @@ class Message {
             $this->conn->exec($sql);
             
             // 确保messages表有file_type列
-            $this->conn->exec("ALTER TABLE IF EXISTS messages ADD COLUMN IF NOT EXISTS file_type VARCHAR(50) NULL");
+            $stmt = $this->conn->prepare("SHOW COLUMNS FROM messages LIKE 'file_type'");
+            $stmt->execute();
+            if (!$stmt->fetch()) {
+                $this->conn->exec("ALTER TABLE messages ADD COLUMN file_type VARCHAR(50) NULL");
+            }
             
             // 确保group_messages表有file_type列
-            $this->conn->exec("ALTER TABLE IF EXISTS group_messages ADD COLUMN IF NOT EXISTS file_type VARCHAR(50) NULL");
+            $stmt = $this->conn->prepare("SHOW COLUMNS FROM group_messages LIKE 'file_type'");
+            $stmt->execute();
+            if (!$stmt->fetch()) {
+                $this->conn->exec("ALTER TABLE group_messages ADD COLUMN file_type VARCHAR(50) NULL");
+            }
         } catch (PDOException $e) {
             error_log("Ensure tables exist error: " . $e->getMessage());
         }

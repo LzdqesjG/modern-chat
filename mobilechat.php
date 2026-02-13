@@ -74,15 +74,24 @@ function createGroupTables() {
         UNIQUE KEY unique_user_chat (user_id, chat_type, chat_id),
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-    
-    -- 添加缺失的file_type列
-    ALTER TABLE IF EXISTS messages ADD COLUMN IF NOT EXISTS file_type VARCHAR(50) NULL;
-    ALTER TABLE IF EXISTS group_messages ADD COLUMN IF NOT EXISTS file_type VARCHAR(50) NULL;
     ";
     
     try {
         if ($conn) {
             $conn->exec($create_tables_sql);
+            
+            // 添加缺失的file_type列（兼容性处理）
+            $stmt = $conn->prepare("SHOW COLUMNS FROM messages LIKE 'file_type'");
+            $stmt->execute();
+            if (!$stmt->fetch()) {
+                $conn->exec("ALTER TABLE messages ADD COLUMN file_type VARCHAR(50) NULL");
+            }
+            
+            $stmt = $conn->prepare("SHOW COLUMNS FROM group_messages LIKE 'file_type'");
+            $stmt->execute();
+            if (!$stmt->fetch()) {
+                $conn->exec("ALTER TABLE group_messages ADD COLUMN file_type VARCHAR(50) NULL");
+            }
         }
         error_log("群聊相关数据表创建成功");
     } catch (PDOException $e) {
