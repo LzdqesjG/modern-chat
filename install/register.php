@@ -616,41 +616,92 @@
             terms: false,
             privacy: false
         };
-        let hasReadForTenSeconds = {
-            terms: false,
-            privacy: false
-        };
-        let countdownTimers = {
-            terms: null,
-            privacy: null
-        };
-        let countdownSeconds = {
-            terms: 15,
-            privacy: 15
-        };
-        const REQUIRED_READ_TIME = 15; // 必须倒计时15秒
+        let scrollAnimationId = null; // 用于取消动画
 
-        // 自动滚动函数
-        function autoScrollToBottom() {
-            const bodyEl = document.getElementById('modalBody');
-            if (bodyEl) {
-                const scrollHeight = bodyEl.scrollHeight;
-                const clientHeight = bodyEl.clientHeight;
-                const maxScroll = scrollHeight - clientHeight;
+        // 平滑自动滚动函数 - 在20秒内完成，更慢、更平滑
+        function startAutoScroll(contentEl, progressFill, progressText, timerText, readProgress, type, agreeBtn) {
+            const scrollHeight = contentEl.scrollHeight;
+            const clientHeight = contentEl.clientHeight;
+            const maxScroll = scrollHeight - clientHeight;
 
-                // 每次滚动一小段距离
-                const scrollStep = maxScroll / (REQUIRED_READ_TIME * 10); // 15秒内均匀滚动
-                const currentScroll = bodyEl.scrollTop;
+            if (maxScroll <= 0) {
+                // 内容不够长，直接标记为完成
+                hasReadToBottom[type] = true;
+                completeReading(timerText, progressFill, progressText, readProgress, agreeBtn, type);
+                return;
+            }
 
-                if (currentScroll < maxScroll) {
-                    bodyEl.scrollTop = Math.min(currentScroll + scrollStep, maxScroll);
-                }
+            const duration = 20000; // 20秒，更慢
+            const startTime = performance.now();
+            const startScroll = contentEl.scrollTop;
+
+            function scroll() {
+                const currentTime = performance.now();
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+
+                // 使用更平滑的三次贝塞尔缓动函数
+                const easeProgress = easeInOutCubic(progress);
+
+                const targetScroll = startScroll + (maxScroll - startScroll) * easeProgress;
+                contentEl.scrollTop = targetScroll;
 
                 // 更新进度条
-                const scrollPercent = Math.min(100, Math.round((bodyEl.scrollTop / maxScroll) * 100));
+                const scrollPercent = Math.min(100, Math.round((targetScroll / maxScroll) * 100));
                 progressFill.style.width = scrollPercent + '%';
                 progressText.textContent = scrollPercent + '%';
+
+                // 更新倒计时
+                const remainingTime = Math.ceil((duration - elapsed) / 1000);
+                if (remainingTime > 0) {
+                    timerText.textContent = remainingTime + '秒';
+                }
+
+                if (progress < 1) {
+                    scrollAnimationId = requestAnimationFrame(scroll);
+                } else {
+                    // 滚动完成
+                    hasReadToBottom[type] = true;
+                    completeReading(timerText, progressFill, progressText, readProgress, agreeBtn, type);
+                    // 滚动完成后启用用户手动滚动
+                    enableUserScroll(contentEl, progressFill, progressText);
+                }
             }
+
+            scrollAnimationId = requestAnimationFrame(scroll);
+        }
+
+        // 三次贝塞尔缓动函数 - 更平滑
+        function easeInOutCubic(t) {
+            return t < 0.5 
+                ? 4 * t * t * t 
+                : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        }
+
+        // 完成阅读
+        function completeReading(timerText, progressFill, progressText, readProgress, agreeBtn, type) {
+            timerText.textContent = '完成';
+            timerText.className = 'timer-text completed';
+            progressFill.style.width = '100%';
+            progressText.textContent = '100%';
+            readProgress.classList.add('completed');
+            agreeBtn.disabled = false;
+            agreeBtn.textContent = '已阅读并同意';
+            checkAgreementStatus(type);
+        }
+
+        // 启用用户手动滚动
+        function enableUserScroll(contentEl, progressFill, progressText) {
+            contentEl.style.overflow = 'auto'; // 确保可以滚动
+            contentEl.onscroll = function() {
+                const scrollHeight = contentEl.scrollHeight;
+                const clientHeight = contentEl.clientHeight;
+                const maxScroll = scrollHeight - clientHeight;
+                const scrollTop = contentEl.scrollTop;
+                const scrollPercent = Math.min(100, Math.round((scrollTop / maxScroll) * 100));
+                progressFill.style.width = scrollPercent + '%';
+                progressText.textContent = scrollPercent + '%';
+            };
         }
 
         // 显示协议弹窗
@@ -671,22 +722,11 @@
             // 重置进度
             progressFill.style.width = '0%';
             progressText.textContent = '0%';
-            countdownSeconds[type] = REQUIRED_READ_TIME;
-            timerText.textContent = countdownSeconds[type] + '秒';
+            timerText.textContent = '滚动中...';
             timerText.className = 'timer-text counting';
             readProgress.classList.remove('completed');
 
-            // 清除旧的计时器
-            if (countdownTimers[type]) {
-                clearInterval(countdownTimers[type]);
-                countdownTimers[type] = null;
-            }
-
-            // 检查是否已经阅读完成
-            const bothRead = hasReadToBottom.terms && hasReadForTenSeconds.terms &&
-                           hasReadToBottom.privacy && hasReadForTenSeconds.privacy;
-
-            if (hasReadToBottom[type] && hasReadForTenSeconds[type]) {
+            if (hasReadToBottom[type]) {
                 agreeBtn.disabled = false;
                 agreeBtn.textContent = '已阅读并同意';
                 timerText.textContent = '完成';
@@ -715,31 +755,22 @@
                             bodyEl.innerHTML = renderMarkdown(content);
 
                             // 启动自动滚动
-                            if (!hasReadForTenSeconds[type]) {
-                                countdownSeconds[type] = REQUIRED_READ_TIME;
-                                countdownTimers[type] = setInterval(() => {
-                                    countdownSeconds[type]--;
-                                    timerText.textContent = countdownSeconds[type] + '秒';
-
-                                    // 自动滚动到底部
-                                    autoScrollToBottom();
-
-                                    if (countdownSeconds[type] <= 0) {
-                                        hasReadForTenSeconds[type] = true;
-                                        hasReadToBottom[type] = true;
-                                        clearInterval(countdownTimers[type]);
-                                        countdownTimers[type] = null;
-                                        timerText.textContent = '完成';
-                                        timerText.className = 'timer-text completed';
-                                        progressFill.style.width = '100%';
-                                        progressText.textContent = '100%';
-                                        readProgress.classList.add('completed');
-                                        checkAgreementStatus(type);
-                                    }
-                                }, 1000);
+                            if (!hasReadToBottom[type]) {
+                                // 取消之前的动画
+                                if (scrollAnimationId) {
+                                    cancelAnimationFrame(scrollAnimationId);
+                                }
+                                // 启动新的平滑滚动
+                                startAutoScroll(bodyEl, progressFill, progressText, timerText, readProgress, type, agreeBtn);
                             } else {
+                                // 已完成阅读
                                 timerText.textContent = '完成';
                                 timerText.className = 'timer-text completed';
+                                progressFill.style.width = '100%';
+                                progressText.textContent = '100%';
+                                readProgress.classList.add('completed');
+                                agreeBtn.disabled = false;
+                                agreeBtn.textContent = '已阅读并同意';
                             }
                             
                             return; // 成功加载，退出函数
@@ -816,14 +847,14 @@
         function checkAgreementStatus(type) {
             const agreeBtn = document.getElementById('agreeBtn');
 
-            // 检查当前协议是否阅读完成（只需等待时间）
-            if (hasReadForTenSeconds[type]) {
+            // 检查当前协议是否阅读完成
+            if (hasReadToBottom[type]) {
                 agreeBtn.disabled = false;
                 agreeBtn.textContent = '已阅读并同意';
             }
 
             // 检查是否两个协议都阅读完成
-            const bothRead = hasReadForTenSeconds.terms && hasReadForTenSeconds.privacy;
+            const bothRead = hasReadToBottom.terms && hasReadToBottom.privacy;
 
             const agreementStatus = document.getElementById('agreementStatus');
             const registerBtn = document.getElementById('registerBtn');
@@ -835,10 +866,10 @@
                 registerBtn.textContent = '注册';
             } else {
                 let remaining = [];
-                if (!hasReadForTenSeconds.terms) {
+                if (!hasReadToBottom.terms) {
                     remaining.push('用户协议');
                 }
-                if (!hasReadForTenSeconds.privacy) {
+                if (!hasReadToBottom.privacy) {
                     remaining.push('隐私协议');
                 }
                 agreementStatus.textContent = `（还需阅读：${remaining.join('、')}）`;
@@ -850,17 +881,12 @@
 
         // 关闭弹窗
         function closeModal() {
-            const bodyEl = document.getElementById('modalBody');
-
-            // 停止倒计时
-            if (currentAgreement && countdownTimers[currentAgreement]) {
-                clearInterval(countdownTimers[currentAgreement]);
-                countdownTimers[currentAgreement] = null;
+            // 取消滚动动画
+            if (scrollAnimationId) {
+                cancelAnimationFrame(scrollAnimationId);
+                scrollAnimationId = null;
             }
 
-            if (bodyEl.onscroll) {
-                bodyEl.onscroll = null;
-            }
             document.getElementById('agreementModal').classList.remove('active');
             currentAgreement = null;
         }

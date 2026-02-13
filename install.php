@@ -1040,9 +1040,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_agreement') {
                 countdownTimers[type] = null;
             }
 
-            // 检查是否已经阅读完成
-            const bothRead = hasReadToBottom.tos && hasReadToBottom.privacy;
-
             if (hasReadToBottom[type]) {
                 agreeBtn.disabled = false;
                 agreeBtn.style.opacity = '1';
@@ -1204,27 +1201,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_agreement') {
             });
 
             contentEl.onscroll = function(e) {
-                const scrollTop = contentEl.scrollTop;
-                const scrollHeight = contentEl.scrollHeight;
-                const clientHeight = contentEl.clientHeight;
-
                 // 始终阻止用户手动滚动，只允许自动滚动
                 contentEl.scrollTop = lastScrollTop;
-                return;
-
-                // 计算滚动百分比
-                const scrollPercent = Math.min(100, Math.round((scrollTop / (scrollHeight - clientHeight)) * 100));
-
-                progressFill.style.width = scrollPercent + '%';
-                progressText.textContent = scrollPercent + '%';
-
-                // 判断是否滚动到底部（允许5px误差）
-                if (scrollTop + clientHeight >= scrollHeight - 5 && !hasReadToBottom[type]) {
-                    hasReadToBottom[type] = true;
-                    readProgress.classList.add('completed');
-                    readProgress.querySelector('.check-icon').style.display = 'block';
-                    checkAgreementStatus(type);
-                }
             };
         }
 
@@ -1403,8 +1381,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_agreement') {
 
             switch (currentStep) {
                 case 1:
-                    // 检查是否完整阅读了两个协议（只需等待时间）
-                    const bothRead = hasReadForTenSeconds.tos && hasReadForTenSeconds.privacy;
+                    // 检查是否完整阅读了两个协议
+                    const bothRead = hasReadToBottom.tos && hasReadToBottom.privacy;
                     if (!bothRead) {
                         showAlert('error', '请先完整阅读《用户协议》和《隐私协议》后再继续');
                         return;
