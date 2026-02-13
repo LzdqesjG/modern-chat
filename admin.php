@@ -1720,9 +1720,9 @@ try {
             <h1>管理页面</h1>
             <div class="user-info">
                 <div class="avatar">
-                    <?php echo substr($current_user['username'], 0, 2); ?>
+                    <?php echo htmlspecialchars(substr($current_user['username'], 0, 2), ENT_QUOTES, 'UTF-8'); ?>
                 </div>
-                <span class="username"><?php echo $current_user['username']; ?></span>
+                <span class="username"><?php echo htmlspecialchars($current_user['username'], ENT_QUOTES, 'UTF-8'); ?></span>
                 <span>(管理员)</span>
                 <a href="chat.php" class="logout-btn">返回聊天</a>
             </div>
@@ -1772,15 +1772,15 @@ try {
                         ?>
                         <div class="group-item">
                             <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                                <h4><?php echo $group_item['name']; ?></h4>
+                                <h4><?php echo htmlspecialchars($group_item['name'], ENT_QUOTES, 'UTF-8'); ?></h4>
                                 <?php if ($has_ban_record): ?>
-                                    <span onclick="showBanRecordModal('group', <?php echo $group_item['id']; ?>, '<?php echo $group_item['name']; ?>')" style="font-size: 20px; cursor: pointer; color: #ffc107;" title="查看封禁记录">⚠️</span>
+                                    <span onclick="showBanRecordModal('group', <?php echo $group_item['id']; ?>, '<?php echo htmlspecialchars($group_item['name'], ENT_QUOTES, 'UTF-8'); ?>')" style="font-size: 20px; cursor: pointer; color: #ffc107;" title="查看封禁记录">⚠️</span>
                                 <?php endif; ?>
                             </div>
-                            <p>创建者: <?php echo $group_item['creator_username']; ?></p>
-                            <p>群主: <?php echo $group_item['owner_username']; ?></p>
+                            <p>创建者: <?php echo htmlspecialchars($group_item['creator_username'], ENT_QUOTES, 'UTF-8'); ?></p>
+                            <p>群主: <?php echo htmlspecialchars($group_item['owner_username'], ENT_QUOTES, 'UTF-8'); ?></p>
                             <p class="members">成员数量: <?php echo $group_item['member_count']; ?></p>
-                            <p>创建时间: <?php echo $group_item['created_at']; ?></p>
+                            <p>创建时间: <?php echo htmlspecialchars($group_item['created_at'], ENT_QUOTES, 'UTF-8'); ?></p>
                             <!-- 检查群聊封禁状态 -->
                             <?php 
                             try {
@@ -1805,14 +1805,14 @@ try {
                                 if ($ban_info):
                             ?>
                                 <div style="margin-top: 10px; padding: 8px; background: #ffebee; color: #d32f2f; border-radius: 4px; font-size: 12px;">
-                                    已封禁 - 截止时间: <?php echo $ban_info['ban_end'] ? $ban_info['ban_end'] : '永久'; ?><br>
-                                    原因: <?php echo $ban_info['reason']; ?>
+                                    已封禁 - 截止时间: <?php echo $ban_info['ban_end'] ? htmlspecialchars($ban_info['ban_end'], ENT_QUOTES, 'UTF-8') : '永久'; ?><br>
+                                    原因: <?php echo htmlspecialchars($ban_info['reason'], ENT_QUOTES, 'UTF-8'); ?>
                                 </div>
                                 <?php if ($ban_info['ban_end']): ?>
                                     <button onclick="showLiftGroupBanModal(<?php echo $group_item['id']; ?>)" style="margin-top: 10px; padding: 6px 12px; background: #81c784; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 8px;">解除封禁</button>
                                 <?php endif; ?>
                             <?php else: ?>
-                                <button onclick="showBanGroupModal(<?php echo $group_item['id']; ?>, '<?php echo $group_item['name']; ?>')" style="margin-top: 10px; padding: 6px 12px; background: #e57373; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 8px;">封禁群聊</button>
+                                <button onclick="showBanGroupModal(<?php echo $group_item['id']; ?>, '<?php echo htmlspecialchars($group_item['name'], ENT_QUOTES, 'UTF-8'); ?>')" style="margin-top: 10px; padding: 6px 12px; background: #e57373; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 8px;">封禁群聊</button>
                             <?php endif; 
                             } catch (PDOException $e) {
                                 // 如果表不存在，忽略错误
@@ -1832,9 +1832,9 @@ try {
                         <div class="message">
                             <div class="message-header">
                                 <span class="message-sender">
-                                    <?php echo $msg['sender_username']; ?> (群聊: <?php echo $msg['group_name']; ?>)
+                                    <?php echo htmlspecialchars($msg['sender_username'], ENT_QUOTES, 'UTF-8'); ?> (群聊: <?php echo htmlspecialchars($msg['group_name'], ENT_QUOTES, 'UTF-8'); ?>)
                                 </span>
-                                <span class="message-time"><?php echo $msg['created_at']; ?></span>
+                                <span class="message-time"><?php echo htmlspecialchars($msg['created_at'], ENT_QUOTES, 'UTF-8'); ?></span>
                             </div>
                             <div class="message-content">
                                 <?php if ($msg['content']): ?>
@@ -1842,8 +1842,8 @@ try {
                                 <?php endif; ?>
                                 <?php if ($msg['file_path']): ?>
                                     <div class="message-file">
-                                        <a href="<?php echo $msg['file_path']; ?>" target="_blank">
-                                            📎 <?php echo $msg['file_name']; ?>
+                                        <a href="<?php echo htmlspecialchars($msg['file_path'], ENT_QUOTES, 'UTF-8'); ?>" target="_blank">
+                                            📎 <?php echo htmlspecialchars($msg['file_name'], ENT_QUOTES, 'UTF-8'); ?>
                                         </a>
                                     </div>
                                 <?php endif; ?>
@@ -1861,9 +1861,9 @@ try {
                         <div class="message">
                             <div class="message-header">
                                 <span class="message-sender">
-                                    <?php echo $msg['sender_username']; ?> → <?php echo $msg['receiver_username']; ?>
+                                    <?php echo htmlspecialchars($msg['sender_username'], ENT_QUOTES, 'UTF-8'); ?> → <?php echo htmlspecialchars($msg['receiver_username'], ENT_QUOTES, 'UTF-8'); ?>
                                 </span>
-                                <span class="message-time"><?php echo $msg['created_at']; ?></span>
+                                <span class="message-time"><?php echo htmlspecialchars($msg['created_at'], ENT_QUOTES, 'UTF-8'); ?></span>
                             </div>
                             <div class="message-content">
                                 <?php if ($msg['content']): ?>
@@ -1871,8 +1871,8 @@ try {
                                 <?php endif; ?>
                                 <?php if ($msg['file_path']): ?>
                                     <div class="message-file">
-                                        <a href="<?php echo $msg['file_path']; ?>" target="_blank">
-                                            📎 <?php echo $msg['file_name']; ?>
+                                        <a href="<?php echo htmlspecialchars($msg['file_path'], ENT_QUOTES, 'UTF-8'); ?>" target="_blank">
+                                            📎 <?php echo htmlspecialchars($msg['file_name'], ENT_QUOTES, 'UTF-8'); ?>
                                         </a>
                                     </div>
                                 <?php endif; ?>
@@ -1918,42 +1918,42 @@ try {
                         ?>
                         <div class="group-item">
                             <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                                <h4><?php echo $user_item['username']; ?></h4>
+                                <h4><?php echo htmlspecialchars($user_item['username'], ENT_QUOTES, 'UTF-8'); ?></h4>
                                 <?php if ($has_ban_record): ?>
-                                    <span onclick="showBanRecordModal('user', <?php echo $user_item['id']; ?>, '<?php echo $user_item['username']; ?>')" style="font-size: 20px; cursor: pointer; color: #ffc107;" title="查看封禁记录">⚠️</span>
+                                    <span onclick="showBanRecordModal('user', <?php echo $user_item['id']; ?>, '<?php echo htmlspecialchars($user_item['username'], ENT_QUOTES, 'UTF-8'); ?>')" style="font-size: 20px; cursor: pointer; color: #ffc107;" title="查看封禁记录">⚠️</span>
                                 <?php endif; ?>
                             </div>
-                            <p>邮箱: <?php echo $user_item['email']; ?></p>
-                            <p>状态: <?php echo $user_item['status']; ?></p>
+                            <p>邮箱: <?php echo htmlspecialchars($user_item['email'], ENT_QUOTES, 'UTF-8'); ?></p>
+                            <p>状态: <?php echo htmlspecialchars($user_item['status'], ENT_QUOTES, 'UTF-8'); ?></p>
                             <p>角色: <?php echo $user_item['is_admin'] ? '管理员' : '普通用户'; ?></p>
-                            <p>手机号: <?php echo !empty($user_item['phone']) ? $user_item['phone'] : '未绑定'; ?></p>
-                            <p>注册时间: <?php echo $user_item['created_at']; ?></p>
-                            <p>最后活跃: <?php echo $user_item['last_active']; ?></p>
+                            <p>手机号: <?php echo !empty($user_item['phone']) ? htmlspecialchars($user_item['phone'], ENT_QUOTES, 'UTF-8') : '未绑定'; ?></p>
+                            <p>注册时间: <?php echo htmlspecialchars($user_item['created_at'], ENT_QUOTES, 'UTF-8'); ?></p>
+                            <p>最后活跃: <?php echo htmlspecialchars($user_item['last_active'], ENT_QUOTES, 'UTF-8'); ?></p>
                             <!-- 检查用户封禁状态 -->
                             <?php 
                             $ban_info = $user->isBanned($user_item['id']);
                             if ($ban_info):
                             ?>
                                 <div style="margin-top: 10px; padding: 8px; background: #ffebee; color: #d32f2f; border-radius: 4px; font-size: 12px;">
-                                    已封禁 - 截止时间: <?php echo $ban_info['expires_at'] ? $ban_info['expires_at'] : '永久'; ?><br>
-                                    原因: <?php echo $ban_info['reason']; ?>
+                                    已封禁 - 截止时间: <?php echo $ban_info['expires_at'] ? htmlspecialchars($ban_info['expires_at'], ENT_QUOTES, 'UTF-8') : '永久'; ?><br>
+                                    原因: <?php echo htmlspecialchars($ban_info['reason'], ENT_QUOTES, 'UTF-8'); ?>
                                 </div>
                             <?php endif; ?>
                             <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
                                 <?php if ($user_item['id'] !== $current_user['id'] && !$user_item['is_admin']): ?>
                                     <button onclick="showClearDataModal('deactivate_user', <?php echo $user_item['id']; ?>)" style="padding: 6px 12px; background: #ffa726; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">注销用户</button>
                                     <button onclick="showClearDataModal('delete_user', <?php echo $user_item['id']; ?>)" style="padding: 6px 12px; background: #ef5350; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">强制删除</button>
-                                    <button onclick="showChangePasswordModal(<?php echo $user_item['id']; ?>, '<?php echo $user_item['username']; ?>')" style="padding: 6px 12px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">修改密码</button>
-                                    <button onclick="showChangeUsernameModal(<?php echo $user_item['id']; ?>, '<?php echo $user_item['username']; ?>')" style="padding: 6px 12px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">修改名称</button>
+                                    <button onclick="showChangePasswordModal(<?php echo $user_item['id']; ?>, '<?php echo htmlspecialchars($user_item['username'], ENT_QUOTES, 'UTF-8'); ?>')" style="padding: 6px 12px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">修改密码</button>
+                                    <button onclick="showChangeUsernameModal(<?php echo $user_item['id']; ?>, '<?php echo htmlspecialchars($user_item['username'], ENT_QUOTES, 'UTF-8'); ?>')" style="padding: 6px 12px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">修改名称</button>
                                     <?php if (!empty($user_item['phone'])): ?>
                                         <button onclick="showClearDataModal('unbind_phone', <?php echo $user_item['id']; ?>)" style="padding: 6px 12px; background: #795548; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">解绑手机</button>
                                     <?php endif; ?>
                                     <?php if ($ban_info): ?>
                                         <?php if ($ban_info['expires_at']): ?>
-                                            <button onclick="showLiftBanModal(<?php echo $user_item['id']; ?>, '<?php echo $user_item['username']; ?>')" style="padding: 6px 12px; background: #81c784; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">解除封禁</button>
+                                            <button onclick="showLiftBanModal(<?php echo $user_item['id']; ?>, '<?php echo htmlspecialchars($user_item['username'], ENT_QUOTES, 'UTF-8'); ?>')" style="padding: 6px 12px; background: #81c784; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">解除封禁</button>
                                         <?php endif; ?>
                                     <?php else: ?>
-                                        <button onclick="showBanUserModal(<?php echo $user_item['id']; ?>, '<?php echo $user_item['username']; ?>')" style="padding: 6px 12px; background: #e57373; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">封禁用户</button>
+                                        <button onclick="showBanUserModal(<?php echo $user_item['id']; ?>, '<?php echo htmlspecialchars($user_item['username'], ENT_QUOTES, 'UTF-8'); ?>')" style="padding: 6px 12px; background: #e57373; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">封禁用户</button>
                                     <?php endif; ?>
                                 <?php endif; ?>
                             </div>
@@ -2045,12 +2045,12 @@ try {
                                 echo '<div class="group-item">';
                                 echo '<h4>用户: ' . htmlspecialchars($request['username']) . '</h4>';
                                 echo '<p>邮箱: ' . htmlspecialchars($request['email']) . '</p>';
-                                echo '<p>申请时间: ' . $request['created_at'] . '</p>';
+                                echo '<p>申请时间: ' . htmlspecialchars($request['created_at']) . '</p>';
                                 echo '<p>状态: <span class="' . $status_class . '">' . 
                                     ($request['status'] == 'pending' ? '待处理' : 
                                      ($request['status'] == 'approved' ? '已通过' : '已拒绝')) . '</span></p>';
                                 if ($request['approved_at']) {
-                                    echo '<p>处理时间: ' . $request['approved_at'] . '</p>';
+                                    echo '<p>处理时间: ' . htmlspecialchars($request['approved_at']) . '</p>';
                                 }
                                 
                                 // 只显示待处理申请的审核按钮
@@ -2576,15 +2576,15 @@ try {
                                             <td style="padding: 12px; color: #333;"><?php echo $announcement['id']; ?></td>
                                             <td style="padding: 12px; color: #333; max-width: 200px;"><?php echo htmlspecialchars($announcement['title']); ?></td>
                                             <td style="padding: 12px; color: #666; max-width: 300px;"><?php echo htmlspecialchars(substr($announcement['content'], 0, 50)) . (strlen($announcement['content']) > 50 ? '...' : ''); ?></td>
-                                            <td style="padding: 12px; color: #666;"><?php echo $announcement['admin_username']; ?></td>
+                                            <td style="padding: 12px; color: #666;"><?php echo htmlspecialchars($announcement['admin_username']); ?></td>
                                             <td style="padding: 12px;">
                                                 <span class="status-<?php echo $announcement['is_active'] ? 'approved' : 'pending'; ?>">
                                                     <?php echo $announcement['is_active'] ? '已发布' : '未发布'; ?>
                                                 </span>
                                             </td>
-                                            <td style="padding: 12px; color: #666; font-size: 12px;"><?php echo $announcement['created_at']; ?></td>
+                                            <td style="padding: 12px; color: #666; font-size: 12px;"><?php echo htmlspecialchars($announcement['created_at']); ?></td>
                                             <td style="padding: 12px; color: #666; font-size: 12px;"><?php echo $announcement['read_count']; ?></td>
-                                            <td style="padding: 12px; color: #666; font-size: 12px;"><?php echo $announcement['updated_at']; ?></td>
+                                            <td style="padding: 12px; color: #666; font-size: 12px;"><?php echo htmlspecialchars($announcement['updated_at']); ?></td>
                                             <td style="padding: 12px;">
                                                 <!-- 编辑按钮 -->
                                                 <button onclick="showEditAnnouncementModal(<?php echo $announcement['id']; ?>, '<?php echo htmlspecialchars($announcement['title']); ?>', '<?php echo htmlspecialchars($announcement['content']); ?>', <?php echo $announcement['is_active'] ? 'true' : 'false'; ?>)" 
