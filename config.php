@@ -47,24 +47,15 @@ function getEnvVar($key, $default = '') {
         return $env_vars[$key];
     }
     
-    // 2. 从 $_SERVER 获取
-    if (isset($_SERVER[$key])) {
-        return $_SERVER[$key];
+    // 2. 尝试多种 $_SERVER 键名格式
+    $keys = [$key, strtolower($key), str_replace('_', '.', strtolower($key))];
+    foreach ($keys as $k) {
+        if (isset($_SERVER[$k])) {
+            return $_SERVER[$k];
+        }
     }
     
-    // 3. $_SERVER 小写形式
-    $lowerKey = strtolower($key);
-    if (isset($_SERVER[$lowerKey])) {
-        return $_SERVER[$lowerKey];
-    }
-    
-    // 4. $_SERVER 下划线转点
-    $dotKey = str_replace('_', '.', $lowerKey);
-    if (isset($_SERVER[$dotKey])) {
-        return $_SERVER[$dotKey];
-    }
-    
-    // 5. getenv 函数
+    // 3. getenv 函数
     if (function_exists('getenv')) {
         $value = getenv($key);
         if ($value !== false) {
@@ -131,13 +122,10 @@ function getUserNameMaxLength() {
 
 // IP地址获取函数
 function getUserIP() {
-    if (!empty($_SERVER['HTTP_CLIENT_IP'])) {
-        return $_SERVER['HTTP_CLIENT_IP'];
-    } elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-        return explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'])[0];
-    } else {
-        return $_SERVER['REMOTE_ADDR'];
-    }
+    $ip = $_SERVER['HTTP_CLIENT_IP'] ?? 
+          (isset($_SERVER['HTTP_X_FORWARDED_FOR']) ? explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'])[0] : null) ?? 
+          $_SERVER['REMOTE_ADDR'] ?? '';
+    return trim($ip);
 }
 
 // 数据库配置
@@ -175,32 +163,30 @@ define('ALLOWED_FILE_TYPES', [
 // 会话配置，从config.json读取，默认1小时
 define('SESSION_TIMEOUT', getConfig('Session_Duration', 1) * 3600); // 转换为秒
 
+// API文件列表（不受会话超时跳转影响）
+define('API_FILES', [
+    'get_new_messages.php', 'get_group_members.php', 'mark_messages_read.php', 'get_new_group_messages.php', 
+    'send_message.php', 'add_group_members.php', 'create_group.php', 'delete_friend.php', 
+    'delete_group.php', 'get_available_friends.php', 'get_ban_records.php', 'leave_group.php', 
+    'remove_group_member.php', 'send_friend_request.php', 'set_group_admin.php', 'transfer_ownership.php',
+    'get_group_invitations.php', 'accept_group_invitation.php', 'reject_group_invitation.php',
+    'send_join_request.php', 'get_join_requests.php', 'approve_join_request.php', 'reject_join_request.php',
+    'recall_message.php'
+]);
+
 // 会话超时检查
 if (isset($_SESSION['last_activity']) && isset($_SESSION['user_id'])) {
-    // 计算会话持续时间（秒）
     $session_duration = time() - $_SESSION['last_activity'];
     
-    // 如果会话持续时间超过配置的超时时间，销毁会话并跳转到登录页面
     if ($session_duration > SESSION_TIMEOUT) {
         session_unset();
         session_destroy();
-        // 跳转到登录页面，但仅当不是API请求时
         $current_file = basename($_SERVER['PHP_SELF']);
-        $api_files = [
-            'get_new_messages.php', 'get_group_members.php', 'mark_messages_read.php', 'get_new_group_messages.php', 
-            'send_message.php', 'add_group_members.php', 'create_group.php', 'delete_friend.php', 
-            'delete_group.php', 'get_available_friends.php', 'get_ban_records.php', 'leave_group.php', 
-            'remove_group_member.php', 'send_friend_request.php', 'set_group_admin.php', 'transfer_ownership.php',
-            'get_group_invitations.php', 'accept_group_invitation.php', 'reject_group_invitation.php',
-            'send_join_request.php', 'get_join_requests.php', 'approve_join_request.php', 'reject_join_request.php',
-            'recall_message.php'
-        ];
-        if (!in_array($current_file, $api_files)) {
+        if (!in_array($current_file, API_FILES)) {
             header('Location: login.php?error=' . urlencode('会话已过期，请重新登录'));
             exit;
         }
     } else {
-        // 更新最后活动时间
         $_SESSION['last_activity'] = time();
     }
 }
