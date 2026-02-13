@@ -38,13 +38,14 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // 包含核心文件
-require_once 'config.php';
-require_once 'db.php';
-require_once 'User.php';
-require_once 'Friend.php';
-require_once 'Message.php';
-require_once 'Group.php';
-require_once 'FileUpload.php';
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../db.php';
+require_once __DIR__ . '/../User.php';
+require_once __DIR__ . '/../Friend.php';
+require_once __DIR__ . '/../Message.php';
+require_once __DIR__ . '/../Group.php';
+require_once __DIR__ . '/../FileUpload.php';
+require_once __DIR__ . '/../RSAUtil.php';
 
 // 初始化核心服务类
 try {
@@ -131,7 +132,22 @@ try {
             switch ($action) {
                 case 'login':
                     $email = trim($data['email'] ?? '');
-                    $password = $data['password'] ?? '';
+                    $password = '';
+                    
+                    // 处理 RSA 加密密码
+                    if (isset($data['encrypted_password']) && !empty($data['encrypted_password'])) {
+                        // 使用 RSA 解密密码
+                        $rsaUtil = new RSAUtil();
+                        $decryptedPassword = $rsaUtil->decrypt($data['encrypted_password']);
+                        if ($decryptedPassword !== false) {
+                            $password = $decryptedPassword;
+                        } else {
+                            response_error('密码解密失败，请重试');
+                        }
+                    } elseif (isset($data['password']) && !empty($data['password'])) {
+                        // 兼容未加密的情况
+                        $password = $data['password'];
+                    }
                     
                     if (empty($email) || empty($password)) {
                         response_error('邮箱和密码不能为空');
@@ -189,6 +205,13 @@ try {
                     } else {
                         response_success(['is_logged_in' => false]);
                     }
+                    break;
+                    
+                case 'get_public_key':
+                    // 获取 RSA 公钥，用于前端加密
+                    $rsaUtil = new RSAUtil();
+                    $publicKey = $rsaUtil->getPublicKeyForJS();
+                    response_success(['public_key' => $publicKey]);
                     break;
                     
                 default:
@@ -349,6 +372,46 @@ try {
                     }
                     break;
                     
+                case 'recall':
+                    // 撤回私聊消息
+                    $message_id = $data['message_id'] ?? 0;
+                    if (empty($message_id)) response_error('消息ID不能为空');
+                    
+                    $result = $message->recallMessage($message_id, $current_user_id);
+                    if ($result['success']) {
+                        response_success([], $result['message']);
+                    } else {
+                        response_error($result['message']);
+                    }
+                    break;
+                    
+                case 'mark_read':
+                    // 标记消息为已读
+                    $friend_id = $data['friend_id'] ?? 0;
+                    if (empty($friend_id)) response_error('好友ID不能为空');
+                    
+                    // 获取该好友发送给当前用户的所有未读消息
+                    $stmt = $conn->prepare("SELECT id FROM messages WHERE sender_id = ? AND receiver_id = ? AND status != 'read'");
+                    $stmt->execute([$friend_id, $current_user_id]);
+                    $unread_messages = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                    
+                    if (!empty($unread_messages)) {
+                        $message->markAsRead($unread_messages);
+                        
+                        // 清除未读计数
+                        $stmt = $conn->prepare("UPDATE unread_messages SET count = 0 WHERE user_id = ? AND chat_type = 'friend' AND chat_id = ?");
+                        $stmt->execute([$current_user_id, $friend_id]);
+                    }
+                    
+                    response_success([], '已标记为已读');
+                    break;
+                    
+                case 'get_unread':
+                    // 获取未读消息数量
+                    $unread_count = $message->getUnreadCount($current_user_id);
+                    response_success(['unread_count' => $unread_count]);
+                    break;
+                    
                 default:
                     response_error("Messages 模块不支持操作: $action");
             }
@@ -437,6 +500,118 @@ try {
                         response_error($result['message'] ?? '消息发送失败');
                     }
                     break;
+                    
+                case 'recall':
+                    // 撤回群聊消息
+                    $message_id = $data['message_id'] ?? 0;
+                    if (empty($message_id)) response_error('消息ID不能为空');
+                    
+                    $result = $group->recallGroupMessage($message_id, $current_user_id);
+                    if ($result['success']) {
+                        response_success([], $result['message']);
+                    } else {
+                        response_error($result['message']);
+                    }
+                    break;
+                    
+                case 'leave':
+                    // 退出群聊
+                    $group_id = $data['group_id'] ?? 0;
+                    if (empty($group_id)) response_error('群聊ID不能为空');
+                    
+                    // 检查是否是群主
+                    $group_info = $group->getGroupInfo($group_id);
+                    if ($group_info && $group_info['owner_id'] == $current_user_id) {
+                        response_error('群主不能退出群聊，请先转让群主或解散群聊');
+                    }
+                    
+                    // 删除群成员记录
+                    $stmt = $conn->prepare("DELETE FROM group_members WHERE group_id = ? AND user_id = ?");
+                    $stmt->execute([$group_id, $current_user_id]);
+                    
+                    response_success([], '已退出群聊');
+                    break;
+                    
+                case 'remove_member':
+                    // 踢出群成员（仅群主和管理员可用）
+                    $group_id = $data['group_id'] ?? 0;
+                    $user_id = $data['user_id'] ?? 0;
+                    
+                    if (empty($group_id) || empty($user_id)) response_error('参数不完整');
+                    
+                    // 检查权限
+                    $group_info = $group->getGroupInfo($group_id);
+                    if (!$group_info) response_error('群聊不存在');
+                    
+                    // 检查当前用户是否是群主或管理员
+                    $is_owner = $group_info['owner_id'] == $current_user_id;
+                    $stmt = $conn->prepare("SELECT role FROM group_members WHERE group_id = ? AND user_id = ?");
+                    $stmt->execute([$group_id, $current_user_id]);
+                    $member_info = $stmt->fetch();
+                    $is_admin = $member_info && $member_info['role'] == 'admin';
+                    
+                    if (!$is_owner && !$is_admin) {
+                        response_error('没有权限踢出成员');
+                    }
+                    
+                    // 不能踢出群主
+                    if ($user_id == $group_info['owner_id']) {
+                        response_error('不能踢出群主');
+                    }
+                    
+                    // 删除群成员
+                    $stmt = $conn->prepare("DELETE FROM group_members WHERE group_id = ? AND user_id = ?");
+                    $stmt->execute([$group_id, $user_id]);
+                    
+                    response_success([], '已将该成员移出群聊');
+                    break;
+                    
+                case 'set_admin':
+                    // 设置/取消管理员（仅群主可用）
+                    $group_id = $data['group_id'] ?? 0;
+                    $user_id = $data['user_id'] ?? 0;
+                    $is_admin = $data['is_admin'] ?? true;
+                    
+                    if (empty($group_id) || empty($user_id)) response_error('参数不完整');
+                    
+                    // 检查是否是群主
+                    $group_info = $group->getGroupInfo($group_id);
+                    if (!$group_info || $group_info['owner_id'] != $current_user_id) {
+                        response_error('只有群主可以设置管理员');
+                    }
+                    
+                    if ($group->setAdmin($group_id, $user_id, $is_admin)) {
+                        response_success([], $is_admin ? '已设置为管理员' : '已取消管理员');
+                    } else {
+                        response_error('操作失败，管理员数量已达上限');
+                    }
+                    break;
+                    
+                case 'transfer':
+                    // 转让群主
+                    $group_id = $data['group_id'] ?? 0;
+                    $new_owner_id = $data['new_owner_id'] ?? 0;
+                    
+                    if (empty($group_id) || empty($new_owner_id)) response_error('参数不完整');
+                    
+                    if ($group->transferOwnership($group_id, $current_user_id, $new_owner_id)) {
+                        response_success([], '群主已转让');
+                    } else {
+                        response_error('转让失败，请确认新群主是群成员');
+                    }
+                    break;
+                    
+                case 'mark_read':
+                    // 标记群消息为已读
+                    $group_id = $data['group_id'] ?? 0;
+                    if (empty($group_id)) response_error('群聊ID不能为空');
+                    
+                    // 清除未读计数
+                    $stmt = $conn->prepare("UPDATE unread_messages SET count = 0 WHERE user_id = ? AND chat_type = 'group' AND chat_id = ?");
+                    $stmt->execute([$current_user_id, $group_id]);
+                    
+                    response_success([], '已标记为已读');
+                    break;
 
                 default:
                     response_error("Groups 模块不支持操作: $action");
@@ -458,6 +633,82 @@ try {
                 response_success($upload_result, '文件上传成功');
             } else {
                 response_error($upload_result['message']);
+            }
+            break;
+            
+        // ------------------------------------------
+        // 头像上传模块 (Avatar)
+        // ------------------------------------------
+        case 'avatar':
+            $current_user_id = check_auth();
+            
+            if (!isset($_FILES['avatar'])) {
+                response_error('请选择头像文件');
+            }
+            
+            $file = $_FILES['avatar'];
+            
+            // 验证文件类型
+            $allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mime_type = finfo_file($finfo, $file['tmp_name']);
+            finfo_close($finfo);
+            
+            if (!in_array($mime_type, $allowed_types)) {
+                response_error('只支持 JPG、PNG、GIF、WEBP 格式的图片');
+            }
+            
+            // 验证文件大小 (最大 2MB)
+            if ($file['size'] > 2 * 1024 * 1024) {
+                response_error('头像大小不能超过 2MB');
+            }
+            
+            // 生成文件名
+            $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
+            $avatar_name = 'avatar_' . $current_user_id . '_' . time() . '.' . $extension;
+            $avatar_path = UPLOAD_DIR . $avatar_name;
+            
+            // 确保上传目录存在
+            if (!is_dir(UPLOAD_DIR)) {
+                mkdir(UPLOAD_DIR, 0777, true);
+            }
+            
+            // 移动文件
+            if (!move_uploaded_file($file['tmp_name'], $avatar_path)) {
+                response_error('头像上传失败');
+            }
+            
+            // 更新用户头像
+            $stmt = $conn->prepare("UPDATE users SET avatar = ? WHERE id = ?");
+            $stmt->execute([$avatar_path, $current_user_id]);
+            
+            response_success(['avatar' => $avatar_path], '头像上传成功');
+            break;
+            
+        // ------------------------------------------
+        // 会话模块 (Sessions)
+        // ------------------------------------------
+        case 'sessions':
+            $current_user_id = check_auth();
+            
+            switch ($action) {
+                case 'list':
+                    // 获取会话列表
+                    $sessions = $message->getSessions($current_user_id);
+                    response_success($sessions);
+                    break;
+                    
+                case 'clear_unread':
+                    // 清除未读计数
+                    $session_id = $data['session_id'] ?? 0;
+                    if (empty($session_id)) response_error('会话ID不能为空');
+                    
+                    $message->clearUnreadCount($session_id);
+                    response_success([], '未读计数已清除');
+                    break;
+                    
+                default:
+                    response_error("Sessions 模块不支持操作: $action");
             }
             break;
 

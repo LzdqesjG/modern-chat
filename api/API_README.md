@@ -1,4 +1,4 @@
-# Modern Chat API 文档 (v2.0)
+# Modern Chat API 文档 (v2.1)
 
 ## 概述
 
@@ -9,7 +9,7 @@ Modern Chat API 是一套基于 HTTP 的 RESTful 风格接口，旨在为开发�
 
 ## 基础信息
 
-- **API 入口**: `/api.php`
+- **API 入口**: `/api/api.php`
 - **请求协议**: HTTP / HTTPS
 - **请求方法**: `POST` (推荐)
 - **数据格式**: JSON (`application/json`) 或 Form Data (`application/x-www-form-urlencoded`)
@@ -51,7 +51,8 @@ Modern Chat API 是一套基于 HTTP 的 RESTful 风格接口，旨在为开发�
 - **Action**: `login`
 - **参数**:
   - `email` (string, required): 用户邮箱
-  - `password` (string, required): 用户密码
+  - `password` (string, required): 用户密码（明文，建议使用加密）
+  - `encrypted_password` (string, optional): RSA 加密后的密码（推荐）
 - **响应**: 包含用户基本信息（不含密码）
 
 #### 1.2 用户注册
@@ -72,6 +73,12 @@ Modern Chat API 是一套基于 HTTP 的 RESTful 风格接口，旨在为开发�
 - **Action**: `check_status`
 - **参数**: 无
 - **响应**: `{"is_logged_in": true, "user_id": 123}`
+
+#### 1.5 获取 RSA 公钥
+- **Action**: `get_public_key`
+- **参数**: 无
+- **响应**: `{"public_key": "MIIBIjANBg..."}`
+- **说明**: 用于前端加密密码，配合 `encrypted_password` 参数使用
 
 ---
 
@@ -147,6 +154,23 @@ Modern Chat API 是一套基于 HTTP 的 RESTful 风格接口，旨在为开发�
   - `content` (string, required): 消息内容 (纯文本)
 - **响应**: `{"message_id": 1001}`
 
+#### 4.3 撤回消息
+- **Action**: `recall`
+- **参数**:
+  - `message_id` (int, required): 消息ID
+- **说明**: 只能撤回 2 分钟内自己发送的消息
+
+#### 4.4 标记消息已读
+- **Action**: `mark_read`
+- **参数**:
+  - `friend_id` (int, required): 好友ID
+- **说明**: 将该好友发送的所有未读消息标记为已读
+
+#### 4.5 获取未读消息数量
+- **Action**: `get_unread`
+- **参数**: 无
+- **响应**: `{"unread_count": 5}`
+
 ---
 
 ### 5. 群组模块 (Groups)
@@ -191,6 +215,45 @@ Modern Chat API 是一套基于 HTTP 的 RESTful 风格接口，旨在为开发�
   - `group_id` (int, required)
   - `content` (string, required)
 
+#### 5.8 撤回群消息
+- **Action**: `recall`
+- **参数**:
+  - `message_id` (int, required): 消息ID
+- **说明**: 发送者、群主或管理员可撤回 2 分钟内的消息
+
+#### 5.9 退出群聊
+- **Action**: `leave`
+- **参数**:
+  - `group_id` (int, required)
+- **说明**: 群主不能退出，需先转让群主
+
+#### 5.10 踢出群成员
+- **Action**: `remove_member`
+- **参数**:
+  - `group_id` (int, required)
+  - `user_id` (int, required): 要踢出的用户ID
+- **说明**: 仅群主和管理员可用
+
+#### 5.11 设置管理员
+- **Action**: `set_admin`
+- **参数**:
+  - `group_id` (int, required)
+  - `user_id` (int, required)
+  - `is_admin` (boolean, optional): 默认 true
+- **说明**: 仅群主可用，管理员最多 9 人
+
+#### 5.12 转让群主
+- **Action**: `transfer`
+- **参数**:
+  - `group_id` (int, required)
+  - `new_owner_id` (int, required): 新群主ID
+- **说明**: 仅群主可用
+
+#### 5.13 标记群消息已读
+- **Action**: `mark_read`
+- **参数**:
+  - `group_id` (int, required)
+
 ---
 
 ### 6. 文件上传模块 (Upload)
@@ -213,12 +276,89 @@ Modern Chat API 是一套基于 HTTP 的 RESTful 风格接口，旨在为开发�
 
 ---
 
+### 7. 头像上传模块 (Avatar)
+
+资源名称: `avatar` (需登录)
+
+- **Action**: 默认 (无需指定)
+- **请求方式**: `POST` (multipart/form-data)
+- **参数**:
+  - `avatar` (file, required): 头像图片文件
+- **支持格式**: JPG, PNG, GIF, WEBP
+- **大小限制**: 2MB
+- **响应**:
+  ```json
+  {
+      "avatar": "/uploads/avatar_1_1234567890.jpg"
+  }
+  ```
+
+---
+
+### 8. 会话模块 (Sessions)
+
+资源名称: `sessions` (需登录)
+
+#### 8.1 获取会话列表
+- **Action**: `list`
+- **参数**: 无
+- **响应**: 会话列表数组
+
+#### 8.2 清除未读计数
+- **Action**: `clear_unread`
+- **参数**:
+  - `session_id` (int, required): 会话ID
+
+---
+
+## RSA 加密登录流程
+
+1. 获取公钥：调用 `auth/get_public_key` 获取 RSA 公钥
+2. 前端加密：使用公钥加密密码
+3. 发送登录请求：使用 `encrypted_password` 参数发送加密后的密码
+
+```javascript
+// 示例代码
+const { JSEncrypt } = require('jsencrypt');
+
+async function login(email, password) {
+    // 1. 获取公钥
+    const keyRes = await fetch('/api/api.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resource: 'auth', action: 'get_public_key' })
+    });
+    const { data: { public_key } } = await keyRes.json();
+    
+    // 2. 加密密码
+    const encrypt = new JSEncrypt();
+    encrypt.setPublicKey(public_key);
+    const encryptedPassword = encrypt.encrypt(password);
+    
+    // 3. 登录
+    const loginRes = await fetch('/api/api.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            resource: 'auth',
+            action: 'login',
+            email: email,
+            encrypted_password: encryptedPassword
+        })
+    });
+    
+    return await loginRes.json();
+}
+```
+
+---
+
 ## 调用示例 (JavaScript Fetch)
 
 ### 发送消息示例
 
 ```javascript
-const apiBase = '/chat/api.php';
+const apiBase = '/api/api.php';
 
 async function sendMessage(receiverId, text) {
     try {
@@ -259,6 +399,23 @@ async function uploadFile(fileInput) {
     const response = await fetch(apiBase, {
         method: 'POST',
         body: formData // 自动设置 Content-Type 为 multipart/form-data
+    });
+    
+    return await response.json();
+}
+```
+
+### 上传头像示例
+
+```javascript
+async function uploadAvatar(fileInput) {
+    const formData = new FormData();
+    formData.append('resource', 'avatar');
+    formData.append('avatar', fileInput.files[0]);
+
+    const response = await fetch(apiBase, {
+        method: 'POST',
+        body: formData
     });
     
     return await response.json();
