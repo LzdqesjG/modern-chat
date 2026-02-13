@@ -575,13 +575,19 @@ require_once 'db.php';
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jsencrypt/3.3.2/jsencrypt.min.js"></script>
     <?php
     // 获取 RSA 公钥
-    require_once 'RSAUtil.php';
-    $rsaUtil = new RSAUtil();
-    $publicKey = $rsaUtil->getPublicKeyForJS();
+    $rsaPublicKey = '';
+    try {
+        require_once 'RSAUtil.php';
+        $rsaUtil = new RSAUtil();
+        $rsaPublicKey = $rsaUtil->getPublicKeyForJS();
+    } catch (Exception $e) {
+        // RSA 初始化失败，记录错误但不影响页面加载
+        error_log('RSA 初始化失败: ' . $e->getMessage());
+    }
     ?>
     <script>
         // RSA 公钥，用于前端加密
-        const RSA_PUBLIC_KEY = `<?php echo $publicKey; ?>`;
+        const RSA_PUBLIC_KEY = `<?php echo $rsaPublicKey; ?>`;
     </script>
 </head>
 <body>
@@ -1003,6 +1009,11 @@ require_once 'db.php';
         
         // RSA 加密函数
         function rsaEncrypt(data) {
+            // 如果没有 RSA 公钥，返回 null（将使用明文传输）
+            if (!RSA_PUBLIC_KEY || RSA_PUBLIC_KEY.trim() === '') {
+                console.warn('RSA 公钥未配置，将使用明文传输密码');
+                return null;
+            }
             const encrypt = new JSEncrypt();
             encrypt.setPublicKey(RSA_PUBLIC_KEY);
             return encrypt.encrypt(data);
@@ -1073,10 +1084,8 @@ require_once 'db.php';
                     passwordInput.value = '';
                     // 移除 name 属性，确保原始密码不会被提交
                     passwordInput.removeAttribute('name');
-                } else {
-                    alert('密码加密失败，请重试');
-                    return false;
                 }
+                // 如果加密失败（返回 null），则使用明文传输（降级处理）
             }
             
             return true;
