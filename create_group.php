@@ -57,6 +57,29 @@ try {
         exit;
     }
 
+    // 验证 member_ids 是否都是当前用户的好友
+    require_once 'Friend.php';
+    $friend = new Friend($conn);
+    
+    foreach ($member_ids as $member_id) {
+        // 检查是否为有效用户ID
+        if (!is_int($member_id) && !is_numeric($member_id)) {
+            echo json_encode(['success' => false, 'message' => '无效的成员ID']);
+            exit;
+        }
+        
+        // 跳过自己
+        if ($member_id == $user_id) {
+            continue;
+        }
+        
+        // 检查是否为好友关系
+        if (!$friend->areFriends($user_id, $member_id)) {
+            echo json_encode(['success' => false, 'message' => '只能添加好友到群组']);
+            exit;
+        }
+    }
+
     // 创建Group实例
     $group = new Group($conn);
 

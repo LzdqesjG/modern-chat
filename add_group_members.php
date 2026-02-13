@@ -82,6 +82,25 @@ try {
         exit;
     }
 
+    // 验证 friend_ids 是否都是当前用户的好友
+    require_once 'Friend.php';
+    $friend = new Friend($conn);
+    
+    foreach ($friend_ids as $friend_id) {
+        $friend_id = intval($friend_id);
+        
+        // 跳过自己
+        if ($friend_id == $user_id) {
+            continue;
+        }
+        
+        // 检查是否为好友关系
+        if (!$friend->areFriends($user_id, $friend_id)) {
+            echo json_encode(['success' => false, 'message' => '只能添加好友到群组']);
+            exit;
+        }
+    }
+
     // 开始事务
     $conn->beginTransaction();
 

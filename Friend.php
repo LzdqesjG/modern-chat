@@ -136,6 +136,11 @@ class Friend {
         }
     }
     
+    // 检查两个用户是否是好友（别名方法）
+    public function areFriends($user_id, $friend_id) {
+        return $this->isFriend($user_id, $friend_id);
+    }
+    
     // 删除好友
     public function deleteFriend($user_id, $friend_id) {
         try {
