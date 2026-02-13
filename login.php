@@ -570,9 +570,9 @@ require_once 'db.php';
         }
     </style>
     <!-- 极验验证码JS库 -->
-    <script src="https://static.geetest.com/v4/gt4.js"></script>
+    <script src="https://static.geetest.com/v4/gt4.js" onerror="console.error('极验JS库加载失败')"></script>
     <!-- JSEncrypt RSA加密库 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsencrypt/3.3.2/jsencrypt.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsencrypt/3.3.2/jsencrypt.min.js" onerror="console.error('JSEncrypt库加载失败')"></script>
     <?php
     // 获取 RSA 公钥
     $rsaPublicKey = '';
@@ -997,15 +997,42 @@ require_once 'db.php';
         
         // 极验验证码初始化
         let geetestCaptcha = null;
+        let geetestInitAttempts = 0;
+        const maxGeetestAttempts = 50; // 最多等待5秒
         
-        // 初始化极验验证码
-        initGeetest4({
-            captchaId: '55574dfff9c40f2efeb5a26d6d188245'
-        }, function (captcha) {
-            // captcha为验证码实例
-            geetestCaptcha = captcha;
-            captcha.appendTo("#captcha");// 调用appendTo将验证码插入到页的某一个元素中
-        });
+        // 等待极验库加载完成后再初始化
+        function initGeetestWhenReady() {
+            geetestInitAttempts++;
+            
+            if (typeof initGeetest4 === 'function') {
+                // 极验库已加载，直接初始化
+                console.log('极验库已加载，开始初始化验证码...');
+                initGeetest4({
+                    captchaId: '55574dfff9c40f2efeb5a26d6d188245',
+                    product: 'float'
+                }, function (captcha) {
+                    // captcha为验证码实例
+                    geetestCaptcha = captcha;
+                    captcha.appendTo("#captcha");// 调用appendTo将验证码插入到页的某一个元素中
+                    console.log('极验验证码初始化成功');
+                }, function (error) {
+                    // 初始化失败回调
+                    console.error('极验验证码初始化失败:', error);
+                    document.getElementById('captcha').innerHTML = '<div style="color: red; padding: 10px;">验证码加载失败，请刷新页面重试<br><small>' + (error && error.msg ? error.msg : '未知错误') + '</small></div>';
+                });
+            } else if (geetestInitAttempts < maxGeetestAttempts) {
+                // 极验库未加载，等待后重试
+                console.log('等待极验库加载... 尝试 ' + geetestInitAttempts + '/' + maxGeetestAttempts);
+                setTimeout(initGeetestWhenReady, 100);
+            } else {
+                // 超过最大重试次数
+                console.error('极验库加载超时');
+                document.getElementById('captcha').innerHTML = '<div style="color: red; padding: 10px;">验证码库加载超时，请检查网络连接后刷新页面</div>';
+            }
+        }
+        
+        // 开始初始化极验验证码
+        initGeetestWhenReady();
         
         // RSA 加密函数
         function rsaEncrypt(data) {
