@@ -38,6 +38,36 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // 包含核心文件
+$required_files = [
+    'config.php',
+    'db.php',
+    'User.php',
+    'Friend.php',
+    'Message.php',
+    'Group.php',
+    'FileUpload.php',
+    'RSAUtil.php'
+];
+
+$missing_files = [];
+foreach ($required_files as $file) {
+    $file_path = __DIR__ . '/../' . $file;
+    if (!file_exists($file_path)) {
+        $missing_files[] = $file;
+    }
+}
+
+if (!empty($missing_files)) {
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'message' => '服务器初始化失败: 以下文件不存在: ' . implode(', ', $missing_files),
+        'api_dir' => __DIR__,
+        'parent_dir' => dirname(__DIR__)
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 try {
     require_once __DIR__ . '/../config.php';
     require_once __DIR__ . '/../db.php';
@@ -52,7 +82,9 @@ try {
     http_response_code(500);
     echo json_encode([
         'success' => false,
-        'message' => '服务器初始化失败: 文件加载错误'
+        'message' => '服务器初始化失败: ' . $e->getMessage(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine()
     ], JSON_UNESCAPED_UNICODE);
     exit;
 }
