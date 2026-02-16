@@ -175,15 +175,15 @@ if (isset($_GET['success'])) {
 
         /* 协议同意提示样式 */
         .agreement-notice {
-            display: flex;
-            align-items: center;
             margin-bottom: 20px;
-            padding: 12px;
+            padding: 16px;
             background: #f8f9fa;
             border-radius: 8px;
             border: 1px solid #e0e0e0;
             font-size: 13px;
             color: #666;
+            text-align: center;
+            line-height: 1.6;
         }
 
         .agreement-notice a {
