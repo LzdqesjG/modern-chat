@@ -443,6 +443,8 @@ if (isset($_GET['success'])) {
             }
         }
     </style>
+    <!-- 极验验证码JS库 -->
+    <script src="https://static.geetest.com/v4/gt4.js"></script>
 </head>
 <body>
     <div class="container">
@@ -490,6 +492,16 @@ if (isset($_GET['success'])) {
                 <label for="confirm_password">确认密码</label>
                 <input type="password" id="confirm_password" name="confirm_password" required minlength="6">
             </div>
+            
+            <!-- 极验验证码容器 -->
+            <div class="form-group">
+                <div id="captcha"></div>
+            </div>
+            
+            <!-- 极验验证结果隐藏字段 -->
+            <input type="hidden" name="geetest_challenge" id="geetest_challenge">
+            <input type="hidden" name="geetest_validate" id="geetest_validate">
+            <input type="hidden" name="geetest_seccode" id="geetest_seccode">
             
             <div class="agreement-notice" id="agreementNotice">
                 <span>我已阅读并同意</span>
@@ -698,6 +710,17 @@ if (isset($_GET['success'])) {
             }
         }
         
+        // 极验验证码实例
+        let geetestCaptcha = null;
+        
+        // 初始化极验验证码
+        initGeetest4({
+            captchaId: '55574dfff9c40f2efeb5a26d6d188245'
+        }, function (captcha) {
+            geetestCaptcha = captcha;
+            captcha.appendTo("#captcha");
+        });
+        
         function handleRegisterSubmit(form) {
             if (!termsAgreed || !privacyAgreed) {
                 alert('请先阅读并同意服务条款和隐私政策');
@@ -710,6 +733,34 @@ if (isset($_GET['success'])) {
             if (password !== confirmPassword) {
                 alert('两次输入的密码不一致');
                 return false;
+            }
+            
+            // 检查极验验证码是否通过
+            if (!geetestCaptcha || !geetestCaptcha.getValidate()) {
+                alert('请完成验证码验证');
+                return false;
+            }
+            
+            // 获取验证码验证结果
+            const validate = geetestCaptcha.getValidate();
+            if (validate) {
+                // 极验4.0返回的参数
+                document.getElementById('geetest_challenge').value = validate.lot_number;
+                document.getElementById('geetest_validate').value = validate.captcha_output;
+                document.getElementById('geetest_seccode').value = validate.pass_token;
+                
+                // 添加新的隐藏字段用于极验4.0二次校验
+                const genTimeInput = document.createElement('input');
+                genTimeInput.type = 'hidden';
+                genTimeInput.name = 'gen_time';
+                genTimeInput.value = validate.gen_time;
+                form.appendChild(genTimeInput);
+                
+                const captchaIdInput = document.createElement('input');
+                captchaIdInput.type = 'hidden';
+                captchaIdInput.name = 'captcha_id';
+                captchaIdInput.value = '55574dfff9c40f2efeb5a26d6d188245';
+                form.appendChild(captchaIdInput);
             }
             
             return true;

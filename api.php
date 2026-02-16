@@ -181,6 +181,18 @@ try {
     exit;
 }
 
+// 确保 chat_settings 表有 is_pinned 字段
+try {
+    $stmt = $conn->prepare("SHOW COLUMNS FROM chat_settings LIKE 'is_pinned'");
+    $stmt->execute();
+    if (!$stmt->fetch()) {
+        $conn->exec("ALTER TABLE chat_settings ADD COLUMN is_pinned BOOLEAN DEFAULT FALSE AFTER is_muted");
+        error_log("Added is_pinned column to chat_settings table");
+    }
+} catch (PDOException $e) {
+    error_log("Error checking/adding is_pinned column: " . $e->getMessage());
+}
+
 // ==========================================
 // 辅助函数
 // ==========================================
