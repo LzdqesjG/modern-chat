@@ -57,61 +57,42 @@ header("Location: register.php?error=" . urlencode("该IP地址已经有用户�
     // 获取表单数据
     $username = trim($_POST['username']);
     $email = trim($_POST['email']);
+    $phone = trim($_POST['phone']);
+    $sms_code = trim($_POST['sms_code']);
     $password = $_POST['password'];
     $confirm_password = $_POST['confirm_password'];
-
-    // 检查是否启用了短信验证码
-    $phone_sms_enabled = getConfig('phone_sms', false);
-    if ($phone_sms_enabled === 'true' || $phone_sms_enabled === true) {
-        $phone_sms_enabled = true;
-    } else {
-        $phone_sms_enabled = false;
-    }
-
-    // 手机号和短信验证码（仅当启用短信验证码时获取）
-    $phone = '';
-    $sms_code = '';
-    if ($phone_sms_enabled) {
-        $phone = isset($_POST['phone']) ? trim($_POST['phone']) : '';
-        $sms_code = isset($_POST['sms_code']) ? trim($_POST['sms_code']) : '';
-    }
 
     // 验证表单数据
     $errors = [];
 
-    // 验证手机号（仅当启用短信验证码时）
-    if ($phone_sms_enabled) {
-        if (empty($phone) || !preg_match('/^1[3-9]\d{9}$/', $phone)) {
-            $errors[] = '请输入有效的手机号';
-        }
+    // 验证手机号和短信验证�?    
+if (empty($phone) || !preg_match('/^1[3-9]\d{9}$/', $phone)) {
+        $errors[] = '请输入有效的手机号';
     }
 
-    // 验证短信验证码（仅当启用时）
-    if ($phone_sms_enabled) {
-        if (empty($sms_code)) {
-            $errors[] = '请输入短信验证码';
+    if (empty($sms_code)) {
+        $errors[] = '请输入短信验证码';
+    } else {
+        // 验证短信验证码
+        if (!isset($_SESSION['sms_code']) || !isset($_SESSION['sms_phone']) || !isset($_SESSION['sms_expire'])) {
+            $errors[] = '短信验证码错误，请检查是否过期'; // Session过期或未发送
+        } 
+        elseif ($_SESSION['sms_phone'] !== $phone) {
+            $errors[] = '手机号与接收验证码的手机号不一致';
+        } elseif (time() > $_SESSION['sms_expire']) {
+            $errors[] = '短信验证码已过期，请重新获取';
+        } elseif ($_SESSION['sms_code'] !== $sms_code) {
+            $errors[] = '短信验证码错误，请检查是否输入错误';
         } else {
-            // 验证短信验证码
-            if (!isset($_SESSION['sms_code']) || !isset($_SESSION['sms_phone']) || !isset($_SESSION['sms_expire'])) {
-                $errors[] = '短信验证码错误，请检查是否过期'; // Session过期或未发送
-            } 
-            elseif ($_SESSION['sms_phone'] !== $phone) {
-                $errors[] = '手机号与接收验证码的手机号不一致';
-            } elseif (time() > $_SESSION['sms_expire']) {
-                $errors[] = '短信验证码已过期，请重新获取';
-            } elseif ($_SESSION['sms_code'] !== $sms_code) {
-                $errors[] = '短信验证码错误，请检查是否输入错误';
-            } else {
-                // 验证通过
-                // 强制使用接收验证码的手机号作为注册手机号，实现自动关联
-                $phone = $_SESSION['sms_phone'];
-                
-                // 验证通过，可以选择清除Session防止重复使用
-                unset($_SESSION['sms_code']);
-                // 这里不清除sms_phone，以防后续还需要用到（虽然上面已经赋值给了$phone）
-                unset($_SESSION['sms_expire']);
-                // 暂时保留，防止用户提交失败后需要重新获取验证码
-            }
+            // 验证通过
+            // 强制使用接收验证码的手机号作为注册手机号，实现自动关联
+            $phone = $_SESSION['sms_phone'];
+            
+            // 验证通过，可以选择清除Session防止重复使用
+            unset($_SESSION['sms_code']);
+            // 这里不清除sms_phone，以防后续还需要用到（虽然上面已经赋值给了$phone）
+            unset($_SESSION['sms_expire']);
+            // 暂时保留，防止用户提交失败后需要重新获取
         }
     }
 
@@ -139,70 +120,68 @@ header("Location: register.php?error=" . urlencode("该IP地址已经有用户�
         $errors[] = '两次输入的密码不一致';
     }
 
-    // 极验4.0验证码验证（始终需要）
-    {
-        // 如果已经通过短信发送时的极验验证（5分钟内），则跳过此次验证
-        if (isset($_SESSION['geetest_verified_time']) && (time() - $_SESSION['geetest_verified_time'] < 300)) {
-            // 已通过验证，跳过
-            error_log("Geetest validation skipped due to recent successful verification.");
+    // 极验4.0验证码验证
+    // 如果已经通过短信发送时的极验验证（5分钟内），则跳过此次验证
+    if (isset($_SESSION['geetest_verified_time']) && (time() - $_SESSION['geetest_verified_time'] < 300)) {
+        // 已通过验证，跳过
+        error_log("Geetest validation skipped due to recent successful verification.");
+    } else {
+        $lot_number = isset($_POST['geetest_challenge']) ? $_POST['geetest_challenge'] : '';
+        $captcha_output = isset($_POST['geetest_validate']) ? $_POST['geetest_validate'] : '';
+        $pass_token = isset($_POST['geetest_seccode']) ? $_POST['geetest_seccode'] : '';
+        $gen_time = isset($_POST['gen_time']) ? $_POST['gen_time'] : '';
+        $captcha_id = isset($_POST['captcha_id']) ? $_POST['captcha_id'] : '';
+
+        if (empty($lot_number) || empty($captcha_output) || empty($pass_token) || empty($gen_time) || empty($captcha_id)) {
+            $errors[] = '请完成验证码验证';
         } else {
-            $lot_number = isset($_POST['geetest_challenge']) ? $_POST['geetest_challenge'] : '';
-            $captcha_output = isset($_POST['geetest_validate']) ? $_POST['geetest_validate'] : '';
-            $pass_token = isset($_POST['geetest_seccode']) ? $_POST['geetest_seccode'] : '';
-            $gen_time = isset($_POST['gen_time']) ? $_POST['gen_time'] : '';
-            $captcha_id = isset($_POST['captcha_id']) ? $_POST['captcha_id'] : '';
-    
-            if (empty($lot_number) || empty($captcha_output) || empty($pass_token) || empty($gen_time) || empty($captcha_id)) {
-                $errors[] = '请完成验证码验证';
-            } else {
-                // 调用极验服务器端API验证
-                $captchaId = '55574dfff9c40f2efeb5a26d6d188245';
-                $captchaKey = 'e69583b3ddcc2b114388b5e1dc213cfd';
+            // 调用极验服务器端API验证
+            $captchaId = '55574dfff9c40f2efeb5a26d6d188245';
+            $captchaKey = 'e69583b3ddcc2b114388b5e1dc213cfd';
+            
+            // 生成签名
+            $sign_token = hash_hmac('sha256', $lot_number, $captchaKey);
+            
+            $apiUrl = 'http://gcaptcha4.geetest.com/validate?captcha_id=' . urlencode($captchaId);
+            $params = [
+                'lot_number' => $lot_number,
+                'captcha_output' => $captcha_output,
+                'pass_token' => $pass_token,
+                'gen_time' => $gen_time,
+                'sign_token' => $sign_token
+            ];
+            
+            // 使用curl发送验证请�?            
+$ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $apiUrl);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
+            curl_setopt($ch, CURLOPT_TIMEOUT, 10); // 设置超时时间�?0�?            
+            $response = curl_exec($ch);
+            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            
+            // 调试信息，记录到日志
+            error_log("Geetest 4.0 validation - URL: $apiUrl");
+            error_log("Geetest 4.0 validation - Params: " . json_encode($params));
+            error_log("Geetest 4.0 validation - HTTP Code: $http_code");
+            error_log("Geetest 4.0 validation - Response: $response");
+            
+            // 检查响�?            
+if ($http_code === 200) {
+                $result = json_decode($response, true);
+                error_log("Geetest 4.0 validation - Decoded Result: " . json_encode($result));
                 
-                // 生成签名
-                $sign_token = hash_hmac('sha256', $lot_number, $captchaKey);
-                
-                $apiUrl = 'http://gcaptcha4.geetest.com/validate?captcha_id=' . urlencode($captchaId);
-                $params = [
-                    'lot_number' => $lot_number,
-                    'captcha_output' => $captcha_output,
-                    'pass_token' => $pass_token,
-                    'gen_time' => $gen_time,
-                    'sign_token' => $sign_token
-                ];
-                
-                // 使用curl发送验证请�?            
-    $ch = curl_init();
-                curl_setopt($ch, CURLOPT_URL, $apiUrl);
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_setopt($ch, CURLOPT_POST, true);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
-                curl_setopt($ch, CURLOPT_TIMEOUT, 10); // 设置超时时间�?0�?            
-                $response = curl_exec($ch);
-                $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                
-                // 调试信息，记录到日志
-                error_log("Geetest 4.0 validation - URL: $apiUrl");
-                error_log("Geetest 4.0 validation - Params: " . json_encode($params));
-                error_log("Geetest 4.0 validation - HTTP Code: $http_code");
-                error_log("Geetest 4.0 validation - Response: $response");
-                
-                // 检查响�?            
-    if ($http_code === 200) {
-                    $result = json_decode($response, true);
-                    error_log("Geetest 4.0 validation - Decoded Result: " . json_encode($result));
-                    
-                    if ($result && $result['status'] === 'success' && $result['result'] === 'success') {
-                        // 验证成功
-                    } else {
-                        $errors[] = '验证码验证失败，请重新验证';
-                        $reason = isset($result['reason']) ? $result['reason'] : 'unknown';
-                        error_log("Geetest 4.0 validation failed - Result: " . json_encode($result) . ", Reason: $reason");
-                    }
+                if ($result && $result['status'] === 'success' && $result['result'] === 'success') {
+                    // 验证成功
                 } else {
-                    // API请求失败，暂时跳过验证（可能是网络问题）
-                    error_log("Geetest 4.0 API request failed - HTTP Code: $http_code, Response: $response");
+                    $errors[] = '验证码验证失败，请重新验证';
+                    $reason = isset($result['reason']) ? $result['reason'] : 'unknown';
+                    error_log("Geetest 4.0 validation failed - Result: " . json_encode($result) . ", Reason: $reason");
                 }
+            } else {
+                // API请求失败，暂时跳过验证（可能是网络问题）
+                error_log("Geetest 4.0 API request failed - HTTP Code: $http_code, Response: $response");
             }
         }
     }
