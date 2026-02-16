@@ -1,5 +1,11 @@
 <?php
-require_once 'config.php';
+// 启用会话，必须在任何输出之前调用
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// 加载配置函数（不设置安全头，因为极验验证码需要加载外部资源）
+require_once __DIR__ . '/includes/config_helper.php';
 
 $phone_sms_enabled = getConfig('phone_sms', false);
 if ($phone_sms_enabled === 'true' || $phone_sms_enabled === true) {
