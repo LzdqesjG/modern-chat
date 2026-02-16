@@ -143,7 +143,8 @@
 
         /* 协议同意提示样式 */
         .agreement-notice {
-            text-align: center;
+            display: flex;
+            align-items: center;
             margin-bottom: 20px;
             padding: 12px;
             background: #f8f9fa;
@@ -259,15 +260,26 @@
             padding: 24px;
             overflow-y: auto;
             flex: 1;
-            line-height: 1.8;
+            line-height: 2.0;
             color: #555;
             font-size: 14px;
+            max-height: 70vh;
+        }
+
+        .modal-body p {
+            margin-bottom: 16px;
+            text-align: justify;
         }
 
         .modal-body h1, .modal-body h2, .modal-body h3 {
             color: #333;
-            margin-top: 20px;
-            margin-bottom: 10px;
+            margin-top: 30px;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+        }
+
+        .modal-body h2 {
+            border-bottom: 2px solid #f0f0f0;
         }
 
         .modal-body h1 { font-size: 20px; }
@@ -484,9 +496,8 @@
 
             <!-- 协议同意提示 -->
             <div class="agreement-notice">
-                请阅读 <a href="javascript:void(0)" onclick="showModal('terms')">《用户协议》</a> 和
-                <a href="javascript:void(0)" onclick="showModal('privacy')">《隐私协议》</a>
-                <span id="agreementStatus">（请阅读完整协议）</span>
+                注册即表示同意 <a href="javascript:void(0)" onclick="showModal('terms')">《用户协议》</a> 和 <a href="javascript:void(0)" onclick="showModal('privacy')">《隐私协议》</a>
+                <span id="agreementStatus">（请先阅读协议）</span>
             </div>
 
             <button type="submit" class="btn" id="registerBtn" disabled>请先同意协议</button>
@@ -920,10 +931,10 @@
                 if (!hasReadToBottom.privacy || !hasReadForTenSeconds.privacy) {
                     remaining.push('隐私协议');
                 }
-                agreementStatus.textContent = `（还需阅读：${remaining.join('、')}）`;
+                agreementStatus.textContent = `（需阅读：${remaining.join('、')}）`;
                 agreementStatus.parentElement.classList.remove('completed');
                 registerBtn.disabled = true;
-                registerBtn.textContent = '请先同意协议';
+                registerBtn.textContent = '请先阅读协议';
             }
         }
 
@@ -952,6 +963,8 @@
         // 简单的 Markdown 渲染
         function renderMarkdown(text) {
             return text
+                // 处理特殊的分隔标记
+                .replace(/--- #/g, '<hr style="margin: 20px 0; border: none; border-top: 1px solid #e0e0e0;"><h2>')
                 // 标题
                 .replace(/^### (.+)$/gm, '<h3>$1</h3>')
                 .replace(/^## (.+)$/gm, '<h2>$1</h2>')

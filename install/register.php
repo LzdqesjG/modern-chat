@@ -175,7 +175,8 @@ if (isset($_GET['success'])) {
 
         /* 协议同意提示样式 */
         .agreement-notice {
-            text-align: center;
+            display: flex;
+            align-items: center;
             margin-bottom: 20px;
             padding: 12px;
             background: #f8f9fa;
@@ -291,15 +292,26 @@ if (isset($_GET['success'])) {
             padding: 24px;
             overflow-y: auto;
             flex: 1;
-            line-height: 1.8;
+            line-height: 2.0;
             color: #555;
             font-size: 14px;
+            max-height: 70vh;
+        }
+
+        .modal-body p {
+            margin-bottom: 16px;
+            text-align: justify;
         }
 
         .modal-body h1, .modal-body h2, .modal-body h3 {
             color: #333;
-            margin-top: 20px;
-            margin-bottom: 10px;
+            margin-top: 30px;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+        }
+
+        .modal-body h2 {
+            border-bottom: 2px solid #f0f0f0;
         }
 
         .modal-body h1 { font-size: 20px; }
@@ -514,11 +526,8 @@ if (isset($_GET['success'])) {
             <input type="hidden" name="geetest_seccode" id="geetest_seccode">
             
             <div class="agreement-notice" id="agreementNotice">
-                <span>我已阅读并同意</span>
-                <a href="#" onclick="showAgreement('terms'); return false;">《服务条款》</a>
-                <span>和</span>
-                <a href="#" onclick="showAgreement('privacy'); return false;">《隐私政策》</a>
-                <span id="agreementStatus">未同意</span>
+                注册即表示同意 <a href="#" onclick="showAgreement('terms'); return false;">《服务条款》</a> 和 <a href="#" onclick="showAgreement('privacy'); return false;">《隐私政策》</a>
+                <span id="agreementStatus">（请先阅读协议）</span>
             </div>
             
             <button type="submit" class="btn" id="registerBtn" disabled>创建账户</button>
@@ -550,7 +559,7 @@ if (isset($_GET['success'])) {
                 </div>
             </div>
             <div class="modal-body" id="termsBody" onscroll="updateReadProgress(this, 'terms')">
-                <?php include 'Agreement/terms_of_service.md'; ?>
+                加载中...
             </div>
             <div class="modal-footer">
                 <button class="modal-btn modal-btn-secondary" onclick="closeModal('terms')">关闭</button>
@@ -580,7 +589,7 @@ if (isset($_GET['success'])) {
                 </div>
             </div>
             <div class="modal-body" id="privacyBody" onscroll="updateReadProgress(this, 'privacy')">
-                <?php include 'Agreement/privacy_policy.md'; ?>
+                加载中...
             </div>
             <div class="modal-footer">
                 <button class="modal-btn modal-btn-secondary" onclick="closeModal('privacy')">关闭</button>
@@ -600,6 +609,30 @@ if (isset($_GET['success'])) {
         let termsTimerInterval = null;
         let privacyTimerInterval = null;
         
+        // 简单的 Markdown 渲染
+        function renderMarkdown(text) {
+            return text
+                // 处理特殊的分隔标记
+                .replace(/--- #/g, '<hr style="margin: 20px 0; border: none; border-top: 1px solid #e0e0e0;"><h2>')
+                // 标题
+                .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+                .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+                .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+                // 分隔线
+                .replace(/^---$/gm, '<hr style="margin: 20px 0; border: none; border-top: 1px solid #e0e0e0;">')
+                // 粗体
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                // 列表
+                .replace(/^- (.+)$/gm, '<li>$1</li>')
+                .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
+                // 段落
+                .replace(/^([^<\n].+)$/gm, '<p>$1</p>')
+                // 清理空段落
+                .replace(/<p><\/p>/g, '')
+                .replace(/<p>(<h[1-6]>)/g, '$1')
+                .replace(/(<\/h[1-6]>)<\/p>/g, '$1');
+        }
+
         function showAgreement(type) {
             const modal = document.getElementById(type + 'Modal');
             modal.classList.add('active');
@@ -608,8 +641,26 @@ if (isset($_GET['success'])) {
             const body = document.getElementById(type + 'Body');
             body.scrollTop = 0;
             
-            // 更新进度
-            updateReadProgress(body, type);
+            // 加载并渲染协议内容
+            const fileName = type === 'terms' ? 'terms_of_service.md' : 'privacy_policy.md';
+            const filePath = `../Agreement/${fileName}`;
+            
+            fetch(filePath)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to load agreement');
+                    }
+                    return response.text();
+                })
+                .then(content => {
+                    body.innerHTML = renderMarkdown(content);
+                    // 更新进度
+                    updateReadProgress(body, type);
+                })
+                .catch(error => {
+                    console.error('Error loading agreement:', error);
+                    body.innerHTML = '<div style="text-align: center; padding: 40px; color: #ff4d4f;">加载失败，请稍后重试</div>';
+                });
         }
         
         function closeModal(type) {
@@ -709,13 +760,18 @@ if (isset($_GET['success'])) {
             const registerBtn = document.getElementById('registerBtn');
             
             if (termsAgreed && privacyAgreed) {
-                statusElement.textContent = '已同意';
+                statusElement.textContent = '（已同意）';
                 noticeElement.classList.add('completed');
                 registerBtn.disabled = false;
+                registerBtn.textContent = '创建账户';
             } else {
-                statusElement.textContent = '未同意';
+                let remaining = [];
+                if (!termsAgreed) remaining.push('服务条款');
+                if (!privacyAgreed) remaining.push('隐私政策');
+                statusElement.textContent = `（需阅读：${remaining.join('、')}）`;
                 noticeElement.classList.remove('completed');
                 registerBtn.disabled = true;
+                registerBtn.textContent = '请先阅读协议';
             }
         }
         
