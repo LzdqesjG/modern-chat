@@ -427,6 +427,8 @@
         <h1>创建账户</h1>
         
         <?php
+        require_once 'config.php';
+        
         $phone_sms_enabled = getConfig('phone_sms', false);
         if ($phone_sms_enabled === 'true' || $phone_sms_enabled === true) {
             $phone_sms_enabled = true;
