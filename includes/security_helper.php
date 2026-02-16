@@ -8,7 +8,7 @@ if (!defined('SECURITY_HELPER_LOADED')) {
             header('X-Frame-Options: SAMEORIGIN');
             header('X-XSS-Protection: 1; mode=block');
             header('Referrer-Policy: strict-origin-when-cross-origin');
-            header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.geetest.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://gcaptcha4.geetest.com; frame-src https://player.bilibili.com https://www.youtube.com; media-src 'self' blob:; object-src 'none';");
+            header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.geetest.com https://static2.geetest.com; style-src 'self' 'unsafe-inline' https://static.geetest.com; img-src 'self' data: blob: https://static.geetest.com; font-src 'self' data:; connect-src 'self' https://gcaptcha4.geetest.com https://api.geetest.com; frame-src https://player.bilibili.com https://www.youtube.com; media-src 'self' blob:; object-src 'none';");
             header('Permissions-Policy: geolocation=(), microphone=(), camera=()');
         }
     }
