@@ -4,14 +4,18 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// 加载配置函数（不设置安全头，因为极验验证码需要加载外部资源）
-require_once __DIR__ . '/includes/config_helper.php';
-
-$phone_sms_enabled = getConfig('phone_sms', false);
-if ($phone_sms_enabled === 'true' || $phone_sms_enabled === true) {
-    $phone_sms_enabled = true;
-} else {
-    $phone_sms_enabled = false;
+// 读取配置（不设置CSP，让极验验证码可以加载）
+$phone_sms_enabled = false;
+$config_path = __DIR__ . '/config/config.json';
+if (file_exists($config_path)) {
+    $config_content = file_get_contents($config_path);
+    $config = json_decode($config_content, true);
+    $phone_sms_enabled = isset($config['phone_sms']) ? $config['phone_sms'] : false;
+    if ($phone_sms_enabled === 'true' || $phone_sms_enabled === true) {
+        $phone_sms_enabled = true;
+    } else {
+        $phone_sms_enabled = false;
+    }
 }
 
 if (isset($_GET['error'])) {
