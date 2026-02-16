@@ -7468,7 +7468,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 // 如果是好友聊天，检查是否为好友关系
                 // 这里我们通过检查页面上是否有对应的联系人元素来判断
                 // 因为联系人列表是后端渲染的，只包含已添加的好友
-                const friendElement = document.querySelector(`.contact-item[data-id="${id}"][data-type="friend"]`);
+                const friendElement = document.querySelector(`.chat-item[data-friend-id="${id}"]`);
                 
                 if (!friendElement) {
                     // 如果在联系人列表中找不到该ID，说明不是好友
@@ -7483,7 +7483,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 }
             } else if (chatType === 'group' && id) {
                 // 如果是群聊，检查是否已加入该群
-                const groupElement = document.querySelector(`.contact-item[data-id="${id}"][data-type="group"]`);
+                const groupElement = document.querySelector(`.chat-item[data-group-id="${id}"]`);
                 
                 if (!groupElement) {
                     // 如果在群聊列表中找不到该ID，说明未加入该群
@@ -12242,16 +12242,16 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             let avatarHtml;
             if (isSent) {
                 // 当前用户的头像
-                avatarHtml = `<?php if (!empty($current_user['avatar'])): ?>
-                    <img src="<?php echo $current_user['avatar']; ?>" alt="<?php echo $username; ?>" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">
+                avatarHtml = `<?php if (!empty($current_user['avatar']) && $current_user['avatar'] !== 'deleted_user'): ?>
+                    <img src="<?php echo $current_user['avatar']; ?>" alt="<?php echo $username; ?>" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" onerror="this.style.display='none'; this.parentElement.innerHTML='<?php echo substr($username, 0, 2); ?>';">
                 <?php else: ?>
                     <?php echo substr($username, 0, 2); ?>
                 <?php endif; ?>`;
             } else {
                 // 对方的头像
                 if (chatType === 'friend') {
-                    avatarHtml = `<?php if (isset($selected_friend) && is_array($selected_friend) && isset($selected_friend['avatar']) && !empty($selected_friend['avatar'])): ?>
-                        <img src="<?php echo $selected_friend['avatar']; ?>" alt="<?php echo $selected_friend['username'] ?? ''; ?>" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">
+                    avatarHtml = `<?php if (isset($selected_friend) && is_array($selected_friend) && isset($selected_friend['avatar']) && !empty($selected_friend['avatar']) && $selected_friend['avatar'] !== 'deleted_user'): ?>
+                        <img src="<?php echo $selected_friend['avatar']; ?>" alt="<?php echo $selected_friend['username'] ?? ''; ?>" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" onerror="this.style.display='none'; this.parentElement.innerHTML='<?php echo isset($selected_friend['username']) ? substr($selected_friend['username'], 0, 2) : '?'; ?>';">
                     <?php elseif (isset($selected_friend) && is_array($selected_friend) && isset($selected_friend['username'])): ?>
                         <?php echo substr($selected_friend['username'], 0, 2); ?>
                     <?php else: ?>
@@ -12259,7 +12259,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                     <?php endif; ?>`;
                 } else {
                     // 群聊成员头像
-                    avatarHtml = msg.avatar ? `<img src="${msg.avatar}" alt="${msg.sender_username}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` : msg.sender_username.substring(0, 2);
+                    avatarHtml = msg.avatar && msg.avatar !== 'deleted_user' ? `<img src="${msg.avatar}" alt="${msg.sender_username}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" onerror="this.style.display='none'; this.parentElement.innerHTML='${msg.sender_username.substring(0, 2)}';">` : msg.sender_username.substring(0, 2);
                 }
             }
             
@@ -16132,7 +16132,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/chat/service-worker.js')
+                navigator.serviceWorker.register('service-worker.js')
                     .then((registration) => {
                         console.log('Service Worker 注册成功:', registration.scope);
                     })
