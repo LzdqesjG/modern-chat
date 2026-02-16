@@ -518,7 +518,6 @@ if (isset($_GET['success'])) {
                 <a href="#" onclick="showAgreement('terms'); return false;">《服务条款》</a>
                 <span>和</span>
                 <a href="#" onclick="showAgreement('privacy'); return false;">《隐私政策》</a>
-                <span>，并年满 18 周岁</span>
                 <span id="agreementStatus">未同意</span>
             </div>
             
