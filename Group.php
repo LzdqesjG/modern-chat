@@ -395,6 +395,20 @@ class Group {
             )";
             $this->conn->exec($sql);
             
+            // 确保groups表有is_pinned列
+            $stmt = $this->conn->prepare("SHOW COLUMNS FROM groups LIKE 'is_pinned'");
+            $stmt->execute();
+            if (!$stmt->fetch()) {
+                $this->conn->exec("ALTER TABLE groups ADD COLUMN is_pinned BOOLEAN DEFAULT FALSE");
+            }
+            
+            // 确保groups表有pinned_at列
+            $stmt = $this->conn->prepare("SHOW COLUMNS FROM groups LIKE 'pinned_at'");
+            $stmt->execute();
+            if (!$stmt->fetch()) {
+                $this->conn->exec("ALTER TABLE groups ADD COLUMN pinned_at TIMESTAMP NULL");
+            }
+            
             // 创建unread_messages表来存储未读消息计数
             $sql = "CREATE TABLE IF NOT EXISTS unread_messages (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -784,6 +798,44 @@ class Group {
             }
             $stmt->execute([$group_id, $user_id]);
             return $stmt->fetch();
+        }
+    }
+    
+    /**
+     * 置顶群聊
+     * @param int $group_id 群聊ID
+     * @param int $user_id 用户ID
+     * @return bool 是否成功
+     */
+    public function pinGroup($group_id, $user_id) {
+        try {
+            $stmt = $this->conn->prepare(
+                "UPDATE groups SET is_pinned = TRUE, pinned_at = NOW() WHERE id = ?"
+            );
+            $stmt->execute([$group_id]);
+            return true;
+        } catch(PDOException $e) {
+            error_log("Pin Group Error: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * 取消置顶群聊
+     * @param int $group_id 群聊ID
+     * @param int $user_id 用户ID
+     * @return bool 是否成功
+     */
+    public function unpinGroup($group_id, $user_id) {
+        try {
+            $stmt = $this->conn->prepare(
+                "UPDATE groups SET is_pinned = FALSE, pinned_at = NULL WHERE id = ?"
+            );
+            $stmt->execute([$group_id]);
+            return true;
+        } catch(PDOException $e) {
+            error_log("Unpin Group Error: " . $e->getMessage());
+            return false;
         }
     }
     

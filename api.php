@@ -71,7 +71,7 @@ if (empty($resource)) {
             'user' => ['get_info', 'update_info', 'search', 'update_password', 'delete_account'],
             'friends' => ['list', 'send_request', 'delete', 'get_requests', 'accept_request', 'reject_request'],
             'messages' => ['history', 'send', 'send_file', 'recall', 'mark_read', 'get_unread', 'delete'],
-            'groups' => ['list', 'info', 'create', 'members', 'add_members', 'messages', 'send_message', 'send_file', 'recall', 'leave', 'remove_member', 'set_admin', 'transfer', 'mark_read', 'update_name', 'delete', 'invite', 'delete_message'],
+            'groups' => ['list', 'info', 'create', 'members', 'add_members', 'messages', 'send_message', 'send_file', 'recall', 'leave', 'remove_member', 'set_admin', 'transfer', 'mark_read', 'update_name', 'delete', 'invite', 'delete_message', 'pin', 'unpin'],
             'sessions' => ['list', 'clear_unread', 'pin', 'unpin'],
             'upload' => ['file'],
             'avatar' => ['upload'],
@@ -748,6 +748,24 @@ try {
                     $stmt->execute([$message_id]);
                     
                     response_success([], '消息已删除');
+                    break;
+                    
+                case 'pin':
+                    // 置顶群聊
+                    $group_id = $data['group_id'] ?? 0;
+                    if (empty($group_id)) response_error('群聊ID不能为空');
+                    
+                    $group->pinGroup($group_id, $current_user_id);
+                    response_success([], '群聊已置顶');
+                    break;
+                    
+                case 'unpin':
+                    // 取消置顶群聊
+                    $group_id = $data['group_id'] ?? 0;
+                    if (empty($group_id)) response_error('群聊ID不能为空');
+                    
+                    $group->unpinGroup($group_id, $current_user_id);
+                    response_success([], '已取消置顶');
                     break;
                     
                 case 'leave':

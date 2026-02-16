@@ -103,6 +103,8 @@ CREATE TABLE IF NOT EXISTS `groups` (
     creator_id INT NOT NULL,
     owner_id INT NOT NULL,
     all_user_group INT DEFAULT 0,
+    is_pinned BOOLEAN DEFAULT FALSE,
+    pinned_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
