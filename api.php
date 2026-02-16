@@ -72,7 +72,7 @@ if (empty($resource)) {
             'friends' => ['list', 'send_request', 'delete', 'get_requests', 'accept_request', 'reject_request'],
             'messages' => ['history', 'send', 'send_file', 'recall', 'mark_read', 'get_unread', 'delete'],
             'groups' => ['list', 'info', 'create', 'members', 'add_members', 'messages', 'send_message', 'send_file', 'recall', 'leave', 'remove_member', 'set_admin', 'transfer', 'mark_read', 'update_name', 'delete', 'invite', 'delete_message'],
-            'sessions' => ['list', 'clear_unread'],
+            'sessions' => ['list', 'clear_unread', 'toggle_pin', 'get_settings'],
             'upload' => ['file'],
             'avatar' => ['upload'],
             'announcements' => ['get', 'mark_read'],
@@ -1021,6 +1021,59 @@ try {
                     
                     $message->clearUnreadCount($session_id);
                     response_success([], '未读计数已清除');
+                    break;
+                    
+                case 'toggle_pin':
+                    // 切换置顶状态
+                    $chat_type = $data['chat_type'] ?? '';
+                    $chat_id = $data['chat_id'] ?? 0;
+                    
+                    if (empty($chat_type) || !in_array($chat_type, ['friend', 'group'])) {
+                        response_error('聊天类型无效');
+                    }
+                    if (empty($chat_id)) {
+                        response_error('聊天ID不能为空');
+                    }
+                    
+                    // 检查是否已有设置记录
+                    $stmt = $conn->prepare("SELECT * FROM chat_settings WHERE user_id = ? AND chat_type = ? AND chat_id = ?");
+                    $stmt->execute([$current_user_id, $chat_type, $chat_id]);
+                    $settings = $stmt->fetch();
+                    
+                    if ($settings) {
+                        // 切换置顶状态
+                        $new_pinned = $settings['is_pinned'] ? 0 : 1;
+                        $stmt = $conn->prepare("UPDATE chat_settings SET is_pinned = ? WHERE id = ?");
+                        $stmt->execute([$new_pinned, $settings['id']]);
+                        response_success(['is_pinned' => (bool)$new_pinned], $new_pinned ? '已置顶' : '已取消置顶');
+                    } else {
+                        // 创建新记录，默认置顶
+                        $stmt = $conn->prepare("INSERT INTO chat_settings (user_id, chat_type, chat_id, is_pinned) VALUES (?, ?, ?, 1)");
+                        $stmt->execute([$current_user_id, $chat_type, $chat_id]);
+                        response_success(['is_pinned' => true], '已置顶');
+                    }
+                    break;
+                    
+                case 'get_settings':
+                    // 获取聊天设置
+                    $chat_type = $data['chat_type'] ?? '';
+                    $chat_id = $data['chat_id'] ?? 0;
+                    
+                    if (empty($chat_type) || !in_array($chat_type, ['friend', 'group'])) {
+                        response_error('聊天类型无效');
+                    }
+                    if (empty($chat_id)) {
+                        response_error('聊天ID不能为空');
+                    }
+                    
+                    $stmt = $conn->prepare("SELECT * FROM chat_settings WHERE user_id = ? AND chat_type = ? AND chat_id = ?");
+                    $stmt->execute([$current_user_id, $chat_type, $chat_id]);
+                    $settings = $stmt->fetch();
+                    
+                    response_success([
+                        'is_pinned' => $settings ? (bool)$settings['is_pinned'] : false,
+                        'is_muted' => $settings ? (bool)$settings['is_muted'] : false
+                    ]);
                     break;
                     
                 default:

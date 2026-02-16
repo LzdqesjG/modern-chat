@@ -92,9 +92,11 @@ class Friend {
     public function getFriends($user_id) {
         try {
             $stmt = $this->conn->prepare(
-                "SELECT u.id, u.username, u.email, u.avatar, u.status, f.created_at 
+                "SELECT u.id, u.username, u.email, u.avatar, u.status, f.created_at,
+                        COALESCE(cs.is_pinned, 0) as is_pinned
                  FROM friends f 
                  JOIN users u ON f.friend_id = u.id 
+                 LEFT JOIN chat_settings cs ON cs.user_id = f.user_id AND cs.chat_type = 'friend' AND cs.chat_id = u.id
                  WHERE f.user_id = ? AND f.status = 'accepted'"
             );
             $stmt->execute([$user_id]);

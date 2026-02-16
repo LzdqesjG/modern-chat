@@ -244,6 +244,7 @@ CREATE TABLE IF NOT EXISTS chat_settings (
     chat_type ENUM('friend', 'group') NOT NULL,
     chat_id INT NOT NULL,
     is_muted BOOLEAN DEFAULT FALSE,
+    is_pinned BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY unique_user_chat (user_id, chat_type, chat_id),

@@ -466,12 +466,12 @@ if (isset($_GET['success'])) {
                 <input type="email" id="email" name="email" required>
             </div>
             
+            <?php if ($phone_sms_enabled): ?>
             <div class="form-group">
                 <label for="phone">手机号</label>
                 <input type="tel" id="phone" name="phone" required pattern="^1[3-9]\d{9}$" placeholder="请输入11位手机号">
             </div>
             
-            <?php if ($phone_sms_enabled): ?>
             <div class="form-group">
                 <label for="sms_code">短信验证码</label>
                 <div style="display: flex; gap: 10px;">

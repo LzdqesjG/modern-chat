@@ -740,6 +740,14 @@ class Group {
                     $group['is_me'] = false;
                 }
                 
+                // 获取置顶状态
+                $stmt = $this->conn->prepare(
+                    "SELECT is_pinned FROM chat_settings WHERE user_id = ? AND chat_type = 'group' AND chat_id = ?"
+                );
+                $stmt->execute([$user_id, $group['id']]);
+                $settings = $stmt->fetch();
+                $group['is_pinned'] = $settings ? (bool)$settings['is_pinned'] : false;
+                
                 $groups[] = $group;
             }
         }

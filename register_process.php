@@ -57,8 +57,6 @@ header("Location: register.php?error=" . urlencode("该IP地址已经有用户�
     // 获取表单数据
     $username = trim($_POST['username']);
     $email = trim($_POST['email']);
-    $phone = trim($_POST['phone']);
-    $sms_code = trim($_POST['sms_code']);
     $password = $_POST['password'];
     $confirm_password = $_POST['confirm_password'];
 
@@ -70,12 +68,22 @@ header("Location: register.php?error=" . urlencode("该IP地址已经有用户�
         $phone_sms_enabled = false;
     }
 
+    // 手机号和短信验证码（仅当启用短信验证码时获取）
+    $phone = '';
+    $sms_code = '';
+    if ($phone_sms_enabled) {
+        $phone = isset($_POST['phone']) ? trim($_POST['phone']) : '';
+        $sms_code = isset($_POST['sms_code']) ? trim($_POST['sms_code']) : '';
+    }
+
     // 验证表单数据
     $errors = [];
 
-    // 验证手机号
-    if (empty($phone) || !preg_match('/^1[3-9]\d{9}$/', $phone)) {
-        $errors[] = '请输入有效的手机号';
+    // 验证手机号（仅当启用短信验证码时）
+    if ($phone_sms_enabled) {
+        if (empty($phone) || !preg_match('/^1[3-9]\d{9}$/', $phone)) {
+            $errors[] = '请输入有效的手机号';
+        }
     }
 
     // 验证短信验证码（仅当启用时）
