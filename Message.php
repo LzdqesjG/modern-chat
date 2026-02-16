@@ -113,6 +113,20 @@ class Message {
                 $this->conn->exec("ALTER TABLE group_messages ADD COLUMN file_type VARCHAR(50) NULL");
             }
             
+            // 确保sessions表有is_pinned列
+            $stmt = $this->conn->prepare("SHOW COLUMNS FROM sessions LIKE 'is_pinned'");
+            $stmt->execute();
+            if (!$stmt->fetch()) {
+                $this->conn->exec("ALTER TABLE sessions ADD COLUMN is_pinned BOOLEAN DEFAULT FALSE");
+            }
+            
+            // 确保sessions表有pinned_at列
+            $stmt = $this->conn->prepare("SHOW COLUMNS FROM sessions LIKE 'pinned_at'");
+            $stmt->execute();
+            if (!$stmt->fetch()) {
+                $this->conn->exec("ALTER TABLE sessions ADD COLUMN pinned_at TIMESTAMP NULL");
+            }
+            
             // 确保messages表有is_deleted列
             $stmt = $this->conn->prepare("SHOW COLUMNS FROM messages LIKE 'is_deleted'");
             $stmt->execute();
@@ -241,18 +255,48 @@ class Message {
                     m.type,
                     m.created_at as message_time,
                     s.unread_count,
+                    s.is_pinned,
+                    s.pinned_at,
                     s.updated_at
                  FROM sessions s
                  JOIN users u ON s.friend_id = u.id
                  LEFT JOIN messages m ON s.last_message_id = m.id
                  WHERE s.user_id = ?
-                 ORDER BY s.updated_at DESC"
+                 ORDER BY s.is_pinned DESC, s.pinned_at DESC, s.updated_at DESC"
             );
             $stmt->execute([$user_id]);
             return $stmt->fetchAll();
         } catch(PDOException $e) {
             error_log("Get Sessions Error: " . $e->getMessage());
             return [];
+        }
+    }
+    
+    // 置顶会话
+    public function pinSession($session_id, $user_id) {
+        try {
+            $stmt = $this->conn->prepare(
+                "UPDATE sessions SET is_pinned = TRUE, pinned_at = NOW() WHERE id = ? AND user_id = ?"
+            );
+            $stmt->execute([$session_id, $user_id]);
+            return true;
+        } catch(PDOException $e) {
+            error_log("Pin Session Error: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    // 取消置顶
+    public function unpinSession($session_id, $user_id) {
+        try {
+            $stmt = $this->conn->prepare(
+                "UPDATE sessions SET is_pinned = FALSE, pinned_at = NULL WHERE id = ? AND user_id = ?"
+            );
+            $stmt->execute([$session_id, $user_id]);
+            return true;
+        } catch(PDOException $e) {
+            error_log("Unpin Session Error: " . $e->getMessage());
+            return false;
         }
     }
     

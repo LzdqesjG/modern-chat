@@ -14,6 +14,9 @@ if (!defined('CONFIG_HELPER_LOADED')) {
         }
     }
 
+    require_once __DIR__ . '/security_helper.php';
+    setSecurityHeaders(false);
+
     $env_vars = [];
     $env_file = dirname(__DIR__) . '/.env';
     if (file_exists($env_file)) {
