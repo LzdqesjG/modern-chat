@@ -1,12 +1,12 @@
 <?php
-require_once 'security_check.php';
+require_once __DIR__ . '/security_check.php';
 if (file_exists(__DIR__ . '/lock')) {
-    header('Content-Type: text/html; charset=utf-8');
-    die('请先进行部署后再使用');
+    header('Location: install.php');
+    exit;
 }
-require_once 'config.php';
-require_once 'db.php';
-require_once 'User.php';
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/User.php';
 
 // 检查是否是POST请求
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -317,12 +317,12 @@ $email_verify = false;
         $user->generateEncryptionKeys($result['user_id']);
         
         // 注册成功，将用户添加到所有全员群聊
-        require_once 'Group.php';
+        require_once __DIR__ . '/Group.php';
         $group = new Group($conn);
         $group->addUserToAllUserGroups($result['user_id']);
         
         // 自动添加Admin管理员为好友并自动通过
-        require_once 'Friend.php';
+        require_once __DIR__ . '/Friend.php';
         $friend = new Friend($conn);
         
         // 获取Admin用户的ID
