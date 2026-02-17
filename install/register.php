@@ -1,21 +1,6 @@
 <?php
-// 启用会话，必须在任何输出之前调用
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
-}
-
-// 读取配置（不设置CSP，让极验验证码可以加载）
-$phone_sms_enabled = false;
-$config_path = __DIR__ . '/config/config.json';
-if (file_exists($config_path)) {
-    $config_content = file_get_contents($config_path);
-    $config = json_decode($config_content, true);
-    $phone_sms_enabled = isset($config['phone_sms']) ? $config['phone_sms'] : false;
-    if ($phone_sms_enabled === 'true' || $phone_sms_enabled === true) {
-        $phone_sms_enabled = true;
-    } else {
-        $phone_sms_enabled = false;
-    }
 }
 
 if (isset($_GET['error'])) {
@@ -490,21 +475,6 @@ if (isset($_GET['success'])) {
                 <input type="email" id="email" name="email" required>
             </div>
             
-            <?php if ($phone_sms_enabled): ?>
-            <div class="form-group">
-                <label for="phone">手机号</label>
-                <input type="tel" id="phone" name="phone" required pattern="^1[3-9]\d{9}$" placeholder="请输入11位手机号">
-            </div>
-            
-            <div class="form-group">
-                <label for="sms_code">短信验证码</label>
-                <div style="display: flex; gap: 10px;">
-                    <input type="text" id="sms_code" name="sms_code" required maxlength="6" placeholder="请输入6位验证码" style="flex: 1;">
-                    <button type="button" id="send_sms_btn" class="btn" style="width: auto; padding: 0 20px; margin-bottom: 0; background: #ccc; cursor: not-allowed;" disabled>获取验证码</button>
-                </div>
-            </div>
-            <?php endif; ?>
-            
             <div class="form-group">
                 <label for="password">密码</label>
                 <input type="password" id="password" name="password" required minlength="6">
@@ -599,8 +569,6 @@ if (isset($_GET['success'])) {
     </div>
     
     <script>
-        const phoneSmsEnabled = <?php echo $phone_sms_enabled ? 'true' : 'false'; ?>;
-        
         let termsAgreed = false;
         let privacyAgreed = false;
         
@@ -829,79 +797,6 @@ if (isset($_GET['success'])) {
             }
             
             return true;
-        }
-        
-        // 发送短信验证码
-        const phoneInput = document.getElementById('phone');
-        const sendSmsBtn = document.getElementById('send_sms_btn');
-        
-        if (phoneSmsEnabled && phoneInput && sendSmsBtn) {
-            phoneInput.addEventListener('input', function() {
-                const phone = this.value;
-                if (/^1[3-9]\d{9}$/.test(phone)) {
-                    sendSmsBtn.disabled = false;
-                    sendSmsBtn.style.background = 'linear-gradient(135deg, #12b7f5 0%, #00a2e8 100%)';
-                    sendSmsBtn.style.cursor = 'pointer';
-                } else {
-                    sendSmsBtn.disabled = true;
-                    sendSmsBtn.style.background = '#ccc';
-                    sendSmsBtn.style.cursor = 'not-allowed';
-                }
-            });
-            
-            sendSmsBtn.addEventListener('click', function() {
-                const phone = phoneInput.value;
-                
-                if (!/^1[3-9]\d{9}$/.test(phone)) {
-                    alert('请输入正确的手机号');
-                    return;
-                }
-                
-                // 发送验证码请求
-                const xhr = new XMLHttpRequest();
-                xhr.open('POST', 'send_sms.php', true);
-                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-                xhr.onreadystatechange = function() {
-                    if (xhr.readyState === 4) {
-                        if (xhr.status === 200) {
-                            try {
-                                const data = JSON.parse(xhr.responseText);
-                                if (data.success) {
-                                    alert('验证码已发送，请注意查收');
-                                    
-                                    // 倒计时
-                                    let countdown = 60;
-                                    sendSmsBtn.disabled = true;
-                                    sendSmsBtn.style.background = '#ccc';
-                                    sendSmsBtn.style.cursor = 'not-allowed';
-                                    
-                                    const timer = setInterval(() => {
-                                        countdown--;
-                                        sendSmsBtn.textContent = countdown + '秒后重发';
-                                        
-                                        if (countdown <= 0) {
-                                            clearInterval(timer);
-                                            sendSmsBtn.textContent = '获取验证码';
-                                            if (/^1[3-9]\d{9}$/.test(phoneInput.value)) {
-                                                sendSmsBtn.disabled = false;
-                                                sendSmsBtn.style.background = 'linear-gradient(135deg, #12b7f5 0%, #00a2e8 100%)';
-                                                sendSmsBtn.style.cursor = 'pointer';
-                                            }
-                                        }
-                                    }, 1000);
-                                } else {
-                                    alert('发送失败: ' + data.message);
-                                }
-                            } catch (e) {
-                                alert('发送失败，请稍后重试');
-                            }
-                        } else {
-                            alert('发送失败，请稍后重试');
-                        }
-                    }
-                };
-                xhr.send('phone=' + encodeURIComponent(phone));
-            });
         }
         
         // 监听滚动事件以更新进度

@@ -306,6 +306,11 @@ $email_verify = false;
         }
     }
 
+    // 检查数据库连接是否成功
+    if (!$conn) {
+        throw new Exception("Database connection failed");
+    }
+
     // 创建User实例
     $user = new User($conn);
 
