@@ -1,3 +1,7 @@
+<?php
+// 连接数据库
+require_once 'db.php';
+?>
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -185,7 +189,7 @@
         #qr-code {
             display: inline-block;
             padding: 10px;
-            background: white;
+            background: black;
             border-radius: 12px;
             box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
         }
@@ -534,13 +538,84 @@
     <div class="container">
         <h1>登录</h1>
         
+        <?php
+        if (isset($_GET['error'])) {
+            echo '<div class="error-message">' . htmlspecialchars($_GET['error']) . '</div>';
+        }
+        if (isset($_GET['success'])) {
+            echo '<div class="success-message">' . htmlspecialchars($_GET['success']) . '</div>';
+        }
+        
+        // 忘记密码申请状态提示
+        $password_request_message = '';
+        
+        // 检查是否有邮箱参数，用于显示忘记密码申请状态
+        if (isset($_GET['email'])) {
+            $email = urldecode($_GET['email']);
+            
+            // 获取用户的忘记密码申请状态
+            try {
+                // 先通过邮箱获取用户名
+                $stmt = $conn->prepare("SELECT username FROM users WHERE email = ?");
+                $stmt->execute([$email]);
+                $user = $stmt->fetch();
                 
-                
+                if ($user) {
+                    $username = $user['username'];
+                    
+                    // 查询最新的忘记密码申请
+                    $stmt = $conn->prepare("SELECT status FROM forget_password_requests WHERE username = ? ORDER BY created_at DESC LIMIT 1");
+                    $stmt->execute([$username]);
+                    $request = $stmt->fetch();
+                    
+                    if ($request) {
+                        switch ($request['status']) {
+                            case 'approved':
+                                $password_request_message = '您的修改密码申请已通过，请使用新密码登录';
+                                $message_type = 'success';
+                                break;
+                            case 'rejected':
+                                $password_request_message = '您的修改密码申请无法通过';
+                                $message_type = 'error';
+                                break;
+                        }
+                    }
+                }
+            } catch (PDOException $e) {
+                error_log("Check password request status error: " . $e->getMessage());
+            }
+        }
+        
+        // 显示忘记密码申请状态提示
+        if (!empty($password_request_message)) {
+            $message_class = $message_type === 'error' ? 'error-message' : 'success-message';
+            echo '<div class="' . $message_class . '">' . $password_request_message . '</div>';
+        }
+        ?>
+        
+        <?php
+        // 检测设备类型
+        function isMobileDevice() {
+            $userAgent = $_SERVER['HTTP_USER_AGENT'];
+            $mobileAgents = array('Android', 'iPhone', 'iPad', 'iPod', 'BlackBerry', 'Windows Phone', 'Mobile', 'Opera Mini', 'Fennec', 'IEMobile');
+            foreach ($mobileAgents as $agent) {
+                if (stripos($userAgent, $agent) !== false) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        
+        $is_mobile = isMobileDevice();
+        ?>
+        
         <!-- 登录选项 -->
         <div class="login-options">
             <div class="login-option active" data-method="password">密码登录</div>
-                        <div class="login-option" data-method="scan">扫码登录</div>
-                    </div>
+            <?php if (!$is_mobile) { ?>
+            <div class="login-option" data-method="scan">扫码登录</div>
+            <?php } ?>
+        </div>
         
         <!-- 密码登录 -->
         <div class="login-method active" id="password-login">
@@ -591,19 +666,21 @@
         </div>
         
         <!-- 扫码登录（仅在PC端显示） -->
-                <div class="login-method" id="scan-login">
-            <div class="qr-container">
+        <?php if (!$is_mobile) { ?>
+        <div class="login-method" id="scan-login">
+            <div class="qr-container" style="background-color: black; color: white; padding: 30px; border-radius: 12px;">
                 <div id="qr-code"></div>
-                <div class="qr-info">
+                <div class="qr-info" style="color: white;">
                     <p>使用手机APP扫描二维码登录</p>
                     <p>有效期 <span class="countdown" id="countdown">5:00</span></p>
                 </div>
-                <div class="status-message status-pending" id="status-message">
+                <div class="status-message status-pending" id="status-message" style="background-color: rgba(255, 255, 255, 0.1); color: white; border-color: rgba(255, 255, 255, 0.2);">
                     等待手机确认...
                 </div>
             </div>
         </div>
-            </div>
+        <?php } ?>
+    </div>
 
     <!-- 协议预览弹窗 -->
     <div class="modal-overlay" id="agreementModal">
@@ -730,17 +807,33 @@
                     // 将浏览器指纹添加到二维码内容中
                     const qrContentWithFingerprint = data.qr_content + '&browser_fingerprint=' + encodeURIComponent(fingerprint);
                     
+                    // 在黑色背景下，使用白色作为二维码颜色，优化参数以提高识别率
                     QRCode.toCanvas(canvas, qrContentWithFingerprint, {
-                        width: 200,
-                        margin: 1,
+                        width: 280, // 进一步增加二维码尺寸，提高清晰度
+                        margin: 8, // 进一步增加边距以提高识别率
+                        errorCorrectionLevel: 'H', // 使用最高纠错级别
                         color: {
-                            dark: '#000000',
-                            light: '#ffffff'
+                            dark: '#ffffff', // 二维码颜色为白色
+                            light: '#000000' // 背景颜色为黑色
                         }
                     }, function(error) {
                         if (error) {
                             console.error('生成二维码失败:', error);
                             qrCode.innerHTML = '<p style="color: #ff4757;">生成二维码失败，请重试</p>';
+                        } else {
+                            // 添加扫码引导提示
+                            const hint = document.createElement('div');
+                            hint.style.position = 'absolute';
+                            hint.style.top = '10px';
+                            hint.style.left = '50%';
+                            hint.style.transform = 'translateX(-50%)';
+                            hint.style.color = 'white';
+                            hint.style.fontSize = '12px';
+                            hint.style.background = 'rgba(0, 0, 0, 0.6)';
+                            hint.style.padding = '4px 8px';
+                            hint.style.borderRadius = '4px';
+                            hint.textContent = '请将二维码完整对准摄像头';
+                            qrCode.appendChild(hint);
                         }
                     });
                     
@@ -1142,6 +1235,5 @@
             }
         });
     </script>
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/vcd15cbe7772f49c399c6a5babf22c1241717689176015" integrity="sha512-ZpsOmlRQV6y907TI0dKBHq9Md29nnaEIPlkf84rnaERnq6zvWvPUqr2ft8M1aS28oN72PdrCzSjY4U6VaAw1EQ==" data-cf-beacon='{"version":"2024.11.0","token":"43749428072542b6826b2e3a6ee82a6f","r":1,"server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>
