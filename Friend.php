@@ -122,13 +122,16 @@ class Friend {
         }
     }
     
-    // 检查是否是好友
+    // 检查是否是好友（检查双向关系）
     public function isFriend($user_id, $friend_id) {
         try {
+            // 检查两个方向的好友关系
             $stmt = $this->conn->prepare(
-                "SELECT * FROM friends WHERE user_id = ? AND friend_id = ? AND status = 'accepted'"
+                "SELECT * FROM friends WHERE 
+                 ((user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)) 
+                 AND status = 'accepted'"
             );
-            $stmt->execute([$user_id, $friend_id]);
+            $stmt->execute([$user_id, $friend_id, $friend_id, $user_id]);
             return $stmt->rowCount() > 0;
         } catch(PDOException $e) {
             error_log("Is Friend Error: " . $e->getMessage());

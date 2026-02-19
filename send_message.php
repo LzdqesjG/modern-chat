@@ -471,7 +471,9 @@ try {
         }
         
         // 修复：检查用户是否为群成员
-        if (!$group->isUserInGroup($selected_id, $user_id)) {
+        $is_in_group = $group->isUserInGroup($selected_id, $user_id);
+        error_log("Group membership check: group_id=$selected_id, user_id=$user_id, is_in_group=" . ($is_in_group ? 'true' : 'false'));
+        if (!$is_in_group) {
             echo json_encode(['success' => false, 'message' => '您未加入该群聊，无法发送消息 ❌']);
             exit;
         }

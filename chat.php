@@ -7468,7 +7468,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 // 如果是好友聊天，检查是否为好友关系
                 // 这里我们通过检查页面上是否有对应的联系人元素来判断
                 // 因为联系人列表是后端渲染的，只包含已添加的好友
-                const friendElement = document.querySelector(`.contact-item[data-id="${id}"][data-type="friend"]`);
+                const friendElement = document.querySelector(`.chat-item[data-friend-id="${id}"]`);
                 
                 if (!friendElement) {
                     // 如果在联系人列表中找不到该ID，说明不是好友
@@ -7483,11 +7483,13 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 }
             } else if (chatType === 'group' && id) {
                 // 如果是群聊，检查是否已加入该群
-                const groupElement = document.querySelector(`.contact-item[data-id="${id}"][data-type="group"]`);
+                const groupElement = document.querySelector(`.chat-item[data-group-id="${id}"]`);
                 
                 if (!groupElement) {
                     // 如果在群聊列表中找不到该ID，说明未加入该群
                     // 显示提示并跳转回主页
+                    console.log('Group not found in list. ID:', id);
+                    console.log('Available groups:', document.querySelectorAll('.chat-item[data-group-id]'));
                     showNotification('发起链接失败：您未加入该群聊，无法建立链接', 'error');
                     
                     // 延迟跳转，让用户看清提示

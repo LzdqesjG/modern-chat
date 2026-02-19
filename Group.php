@@ -698,8 +698,8 @@ class Group {
             // 检查用户是否可以访问该群聊
             $is_member = false;
             
-            if ($group['all_user_group'] == 1) {
-                // 全员群聊，所有用户都可以访问
+            if ($group['all_user_group'] > 0) {
+                // 全员群聊（all_user_group > 0），所有用户都可以访问
                 $is_member = true;
             } else {
                 // 普通群聊，检查用户是否是群成员
@@ -708,7 +708,7 @@ class Group {
             
             if ($is_member) {
                 // 获取成员数量
-                if ($group['all_user_group'] == 1) {
+                if ($group['all_user_group'] > 0) {
                     // 全员群聊，成员数量为所有用户的数量
                     $stmt = $this->conn->prepare("SELECT COUNT(*) as total_users FROM users");
                     $stmt->execute();
@@ -722,7 +722,7 @@ class Group {
                 }
                 
                 // 获取用户在该群聊中的角色
-                if ($group['all_user_group'] == 1) {
+                if ($group['all_user_group'] > 0) {
                     // 全员群聊，群主是管理员，其他用户是普通成员
                     $group['is_admin'] = $user_id == $group['owner_id'];
                 } else {
@@ -853,14 +853,22 @@ class Group {
         $stmt->execute([$group_id]);
         $group_info = $stmt->fetch();
         
-        if ($group_info && $group_info['all_user_group'] == 1) {
-            // 全员群聊，所有用户都视为群成员
+        // 调试日志
+        error_log("isUserInGroup: group_id=$group_id, user_id=$user_id, group_exists=" . ($group_info ? 'true' : 'false'));
+        if ($group_info) {
+            error_log("isUserInGroup: all_user_group=" . $group_info['all_user_group']);
+        }
+        
+        if ($group_info && $group_info['all_user_group'] > 0) {
+            // 全员群聊（all_user_group > 0），所有用户都视为群成员
             return true;
         } else {
             // 普通群聊，检查用户是否在群成员表中
             $stmt = $this->conn->prepare("SELECT id FROM group_members WHERE group_id = ? AND user_id = ?");
             $stmt->execute([$group_id, $user_id]);
-            return $stmt->fetch() !== false;
+            $is_member = $stmt->fetch() !== false;
+            error_log("isUserInGroup: is_member=" . ($is_member ? 'true' : 'false'));
+            return $is_member;
         }
     }
     
