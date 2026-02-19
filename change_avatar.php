@@ -22,9 +22,9 @@ if (!isset($_FILES['avatar']) || $_FILES['avatar']['error'] !== UPLOAD_ERR_OK) {
 $user_id = $_SESSION['user_id'];
 
 // 允许的文件类型
-$allowed_types = ['image/jpeg', 'image/png', 'image/gif'];
+$allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 // 允许的文件扩展名
-$allowed_extensions = ['jpg', 'jpeg', 'png', 'gif'];
+$allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 
 // 获取文件信息
 $file = $_FILES['avatar'];
@@ -41,8 +41,19 @@ $real_mime_type = 'application/octet-stream';
 if (function_exists('finfo_open')) {
     $finfo = finfo_open(FILEINFO_MIME_TYPE);
     if ($finfo) {
-        $real_mime_type = finfo_file($finfo, $file_tmp);
+        $detected_mime = finfo_file($finfo, $file_tmp);
+        if ($detected_mime) {
+            $real_mime_type = $detected_mime;
+        }
         finfo_close($finfo);
+    }
+}
+
+// 如果finfo检测失败或返回通用类型，使用getimagesize作为备用
+if ($real_mime_type === 'application/octet-stream' || empty($real_mime_type)) {
+    $image_info = @getimagesize($file_tmp);
+    if ($image_info && isset($image_info['mime'])) {
+        $real_mime_type = $image_info['mime'];
     }
 }
 
@@ -52,9 +63,11 @@ if (!in_array($file_type, $allowed_types) || !in_array($file_extension, $allowed
     exit;
 }
 
-// 额外验证：确保真实MIME类型也是图片
-if (!in_array($real_mime_type, $allowed_types)) {
-    echo json_encode(['success' => false, 'message' => '文件类型验证失败']);
+// 额外验证：确保真实MIME类型也是图片（支持更多图片MIME类型变体）
+$allowed_real_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/pjpeg', 'image/x-png'];
+if (!in_array($real_mime_type, $allowed_real_types)) {
+    error_log("Avatar upload failed: MIME type '$real_mime_type' not allowed. File: " . $file['name']);
+    echo json_encode(['success' => false, 'message' => '文件类型验证失败: ' . $real_mime_type]);
     exit;
 }
 
@@ -94,6 +107,9 @@ switch ($real_mime_type) {
         break;
     case 'image/gif':
         $source_image = imagecreatefromgif($file_tmp);
+        break;
+    case 'image/webp':
+        $source_image = imagecreatefromwebp($file_tmp);
         break;
     default:
         echo json_encode(['success' => false, 'message' => '不支持的图片类型']);
