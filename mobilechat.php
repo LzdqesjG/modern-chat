@@ -101,8 +101,9 @@ function isMobileDevice() {
 }
 
 // 如果不是手机设备，跳转到桌面端聊天页面
-if (!isMobileDevice()) {
-    header('Location: chat.php');
+// 添加 rd=mobile 参数防止循环重定向
+if (!isMobileDevice() && !isset($_GET['rd'])) {
+    header('Location: chat.php?rd=mobile');
     exit;
 }
 
