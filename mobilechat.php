@@ -4252,6 +4252,8 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                         currentScanUrl = result;
                         currentQid = qid;
                         
+                        const deviceType = detectDeviceType();
+                        
                         // 扫描后立即更新状态为scanned
                         fetch('scan_login.php', {
                             method: 'POST',
@@ -4261,7 +4263,8 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                             body: new URLSearchParams({
                                 'qid': qid,
                                 'action': 'scan',
-                                'source': 'mobilechat.php'
+                                'source': 'mobilechat.php',
+                                'app': deviceType
                             })
                         }).then(response => response.json())
                           .then(data => {
@@ -4367,6 +4370,8 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             const modal = document.getElementById('confirm-modal');
             modal.style.display = 'none';
             
+            const deviceType = detectDeviceType();
+            
             // 发送拒绝登录请求，更新状态为rejected
             fetch('scan_login.php', {
                 method: 'POST',
@@ -4376,7 +4381,8 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 body: new URLSearchParams({
                     'qid': currentQid,
                     'action': 'reject',
-                    'source': 'mobilechat.php'
+                    'source': 'mobilechat.php',
+                    'app': deviceType
                 })
             }).then(response => response.json())
               .then(result => {
@@ -4387,9 +4393,26 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
               });
         }
         
+        // 检测设备类型
+        function detectDeviceType() {
+            const userAgent = navigator.userAgent.toLowerCase();
+            
+            if (userAgent.includes('android')) {
+                return 'Android';
+            } else if (userAgent.includes('iphone') || userAgent.includes('ipad') || userAgent.includes('ios')) {
+                return 'IOS';
+            } else if (userAgent.includes('harmonyos') || userAgent.includes('huawei')) {
+                return 'HarmonyOS';
+            } else {
+                return 'Unknown';
+            }
+        }
+        
         // 发送登录请求
         async function sendLoginRequest() {
             try {
+                const deviceType = detectDeviceType();
+                
                 const response = await fetch('scan_login.php', {
                     method: 'POST',
                     headers: {
@@ -4398,7 +4421,8 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                     body: new URLSearchParams({
                         'qid': currentQid,
                         'user': '<?php echo $username; ?>',
-                        'source': 'mobilechat.php'
+                        'source': 'mobilechat.php',
+                        'app': deviceType
                     })
                 });
                 
@@ -11633,11 +11657,22 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             
             const song = customPlaylistData[customPlaylistIndex++];
             
+            // 确保URL使用HTTPS
+            let audioUrl = song.url;
+            if (audioUrl && audioUrl.startsWith('http://')) {
+                audioUrl = audioUrl.replace('http://', 'https://');
+            }
+            
+            let picUrl = song.cover;
+            if (picUrl && picUrl.startsWith('http://')) {
+                picUrl = picUrl.replace('http://', 'https://');
+            }
+            
             currentSong = {
                 name: song.title,
                 artistsname: song.artist,
-                url: song.url,
-                picurl: song.cover
+                url: audioUrl,
+                picurl: picUrl
             };
             
             // 更新UI
@@ -11647,11 +11682,11 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             if(progressInfo) progressInfo.textContent = `${song.name} - ${song.artistsname}`;
             
             const albumImage = document.getElementById('album-image');
-            if (song.picurl && song.picurl !== 'assets/default_music_cover.png') {
-                 albumImage.src = song.picurl;
+            if (picUrl && picUrl !== 'assets/default_music_cover.png') {
+                 albumImage.src = picUrl;
             } else {
                 // 默认图
-                albumImage.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiNkZGQiLz48dGV4dCB4PSI1MCIgeT0iNTAiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXNpemU9IjE0IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIGZpbGw9IiM4ODgiPuVjb3ZlcjwvdGV4dD48L3N2Zz4=';
+                albumImage.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiNkZGQiLz48dGV4dD48L3N2Zz4=';
             }
             albumImage.style.display = 'block';
             

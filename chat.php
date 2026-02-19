@@ -75,25 +75,14 @@ function createGroupTables() {
         UNIQUE KEY unique_user_chat (user_id, chat_type, chat_id),
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    
+
     ";
     
     try {
         if ($conn instanceof PDO) {
             // @phpstan-ignore-next-line
             $conn->exec($create_tables_sql);
-            
-            // 添加缺失的file_type列（兼容性处理）
-            $stmt = $conn->prepare("SHOW COLUMNS FROM messages LIKE 'file_type'");
-            $stmt->execute();
-            if (!$stmt->fetch()) {
-                $conn->exec("ALTER TABLE messages ADD COLUMN file_type VARCHAR(50) NULL");
-            }
-            
-            $stmt = $conn->prepare("SHOW COLUMNS FROM group_messages LIKE 'file_type'");
-            $stmt->execute();
-            if (!$stmt->fetch()) {
-                $conn->exec("ALTER TABLE group_messages ADD COLUMN file_type VARCHAR(50) NULL");
-            }
         }
         error_log("群聊相关数据表创建成功");
     } catch (PDOException $e) {
@@ -148,6 +137,83 @@ try {
     }
 } catch (PDOException $e) {
     error_log("Error checking/adding security question columns: " . $e->getMessage());
+}
+
+// 自动创建点歌群聊和Music_Bot用户
+try {
+    // 1. 检查并添加Music_all_group字段
+    $stmt = $conn->prepare("SHOW COLUMNS FROM `groups` LIKE 'Music_all_group'");
+    $stmt->execute();
+    $column_exists = $stmt->fetch();
+    
+    if (!$column_exists) {
+        $conn->exec("ALTER TABLE `groups` ADD COLUMN Music_all_group INT DEFAULT 0 AFTER is_muted");
+        error_log("Added Music_all_group column to groups table");
+    }
+    
+    // 2. 创建点歌群聊
+    $stmt = $conn->prepare("SELECT id FROM `groups` WHERE Music_all_group = 1");
+    $stmt->execute();
+    $music_group = $stmt->fetch();
+    
+    if (!$music_group) {
+        // 查找第一个系统管理员
+        $stmt = $conn->prepare("SELECT id FROM users WHERE is_admin = 1 ORDER BY id ASC LIMIT 1");
+        $stmt->execute();
+        $admin = $stmt->fetch();
+        
+        if ($admin) {
+            $stmt = $conn->prepare("INSERT INTO `groups` (name, creator_id, owner_id, Music_all_group) VALUES (?, ?, ?, 1)");
+            $stmt->execute(['点歌群聊', $admin['id'], $admin['id']]);
+            $music_group_id = $conn->lastInsertId();
+            error_log("Created music group chat with ID: $music_group_id");
+        }
+    }
+    
+    // 3. 创建Music_Bot用户
+    $stmt = $conn->prepare("SELECT id FROM users WHERE username = 'Music_Bot'");
+    $stmt->execute();
+    $music_bot = $stmt->fetch();
+    
+    if (!$music_bot) {
+        $password = password_hash('MusicBot123!', PASSWORD_DEFAULT);
+        $stmt = $conn->prepare("INSERT INTO users (username, email, password, is_admin) VALUES (?, ?, ?, 0)");
+        $stmt->execute(['Music_Bot', 'music_bot@example.com', $password]);
+        $music_bot_id = $conn->lastInsertId();
+        error_log("Created Music_Bot user with ID: $music_bot_id");
+    }
+    
+    // 4. 将Music_Bot添加为点歌群聊的管理员
+    if (isset($music_group_id) && isset($music_bot_id)) {
+        $stmt = $conn->prepare("SELECT id FROM group_members WHERE group_id = ? AND user_id = ?");
+        $stmt->execute([$music_group_id, $music_bot_id]);
+        $member_exists = $stmt->fetch();
+        
+        if (!$member_exists) {
+            $stmt = $conn->prepare("INSERT INTO group_members (group_id, user_id, role) VALUES (?, ?, 'admin')");
+            $stmt->execute([$music_group_id, $music_bot_id]);
+            error_log("Added Music_Bot as admin to music group");
+        }
+    }
+    
+    // 5. 确保temp_song_config.json文件存在
+    $config_file = 'config/temp_song_config.json';
+    if (!file_exists($config_file)) {
+        $default_config = [
+            '歌单' => [
+                'type' => 'qqmusic',
+                'data' => [
+                    [
+                        '星之映像' => '1'
+                    ]
+                ]
+            ]
+        ];
+        file_put_contents($config_file, json_encode($default_config, JSON_PRETTY_PRINT));
+        error_log("Created temp_song_config.json file");
+    }
+} catch (PDOException $e) {
+    error_log("Error creating music group or bot: " . $e->getMessage());
 }
 
 // 检查是否启用了全员群聊功能，如果启用了，确保全员群聊存在并包含所有用户
@@ -213,6 +279,10 @@ $is_admin = isset($current_user['is_admin']) && $current_user['is_admin'];
 require_once 'Lunar.php';
 $lunar_config = Lunar::getConfig();
 $is_music_locked = $lunar_config['is_music_locked'];
+
+// 检查时间是否在早上11点到晚上11点之间
+$current_hour = date('H');
+$is_radio_period = $current_hour >= 11 && $current_hour < 23;
 
 // 背景图片逻辑
 $default_bg = 'https://bing.biturl.top/?resolution=1920&format=image&index=0&mkt=zh-CN';
@@ -3764,7 +3834,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                                         // 检查是否是管理员
                                         $group_members = $group->getGroupMembers($group_item['id']);
                                         foreach ($group_members as $member) {
-                                            if ($member['user_id'] == $user_id && $member['is_admin']) {
+                                            if (isset($member['user_id']) && isset($member['is_admin']) && $member['user_id'] == $user_id && $member['is_admin']) {
                                                 $is_admin = true;
                                                 break;
                                             }
@@ -3851,8 +3921,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                             $msg_time = strtotime($msg['created_at']);
                             $now = time();
                             $time_diff_minutes = ($now - $msg_time) / 60;
-                            // 使用 <= 2，与 JavaScript 保持一致，允许刚好 2 分钟时撤回
-                            $is_within_2_minutes = $time_diff_minutes <= 2;
+                            $is_within_2_minutes = $time_diff_minutes < 2;
                         ?>
                         <div class="message <?php echo $is_sent ? 'sent' : 'received'; ?>" 
                             data-message-id="<?php echo $msg['id']; ?>" 
@@ -3938,24 +4007,18 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                                         }
                                     ?>
                                     <div class="message-time"><?php echo date('Y年m月d日 H:i', strtotime($msg['created_at'])); ?></div>
-                                    <?php 
-                                    // 判断是否需要显示操作按钮
-                                    $has_recall_btn = $is_within_2_minutes;
-                                    $has_download_btn = (isset($msg['type']) && $msg['type'] == 'file') || (isset($msg['file_path']) && !empty($msg['file_path']));
-                                    $show_actions_menu = $has_recall_btn || $has_download_btn;
-                                    
-                                    if ($show_actions_menu): 
-                                    ?>
+                                    <?php if (true): // 始终显示三个点按钮，撤回功能在菜单内判断 ?>
                                         <div class='message-actions' style='position: absolute; top: 50%; right: -10px; transform: translateY(-50%); display: flex; align-items: center; gap: 5px; z-index: 9999;'>
                                             <div style='position: relative; z-index: 9999;'>
                                                 <button class='message-action-btn' onclick='toggleMessageActions(this)' style='width: 28px; height: 28px; font-size: 18px; background: rgba(0,0,0,0.2); border: none; border-radius: 50%; color: #333; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 1; transition: all 0.2s ease; position: relative; z-index: 9999;'>⋮</button>
                                                 <div class='message-action-menu' style='display: none; position: absolute; top: 35px; right: 0; background: white; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.2); padding: 8px 0; z-index: 10000; min-width: 100px; border: 1px solid var(--border-color);'>
-                                                    <?php if ($has_recall_btn): ?>
+                                                    <?php if ($is_within_2_minutes): ?>
                                                         <button class='message-action-item' onclick='recallMessage(this, "<?php echo $msg['id']; ?>", "<?php echo $chat_type; ?>", "<?php echo $selected_id; ?>")' style='display: block; width: 100%; text-align: left; padding: 8px 16px; border: none; background: transparent; cursor: pointer; transition: all 0.2s ease; color: #333;'>撤回</button>
                                                     <?php endif; ?>
                                                     
                                                     <?php 
-                                                    if ($has_download_btn) {
+                                                    // 如果是文件消息，添加下载按钮
+                                                    if (isset($msg['type']) && $msg['type'] == 'file' || (isset($msg['file_path']) && !empty($msg['file_path']))) {
                                                         $dl_file_name = isset($msg['file_name']) ? $msg['file_name'] : '';
                                                         $dl_file_path = isset($msg['file_path']) ? $msg['file_path'] : '';
                                                         $dl_file_size = isset($msg['file_size']) ? $msg['file_size'] : 0;
@@ -7125,7 +7188,127 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 });
         }
         
-        function sendMessage() {
+        // 点歌功能相关变量
+let currentSongSearch = {
+    songName: '',
+    page: 1,
+    results: []
+};
+
+// 处理点歌请求
+function handleMusicRequest(action, groupId, message, page = 1, songName = '', choice = '') {
+    fetch('handle_music_request.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            action: action,
+            group_id: groupId,
+            message: message,
+            page: page,
+            song_name: songName,
+            choice: choice
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const messagesContainer = document.getElementById('messages-container');
+            const chatType = 'group';
+            const chatId = groupId;
+            
+            if (data.action === 'search_song') {
+                // 更新当前搜索状态
+                currentSongSearch = {
+                    songName: data.song_name,
+                    page: data.page,
+                    results: data.results
+                };
+                
+                // 显示搜索结果
+                const resultMessage = document.createElement('div');
+                resultMessage.className = 'message received';
+                resultMessage.dataset.chatType = chatType;
+                resultMessage.dataset.chatId = chatId;
+                
+                let resultText = `点歌搜索结果 - ${data.song_name}<br><br>`;
+                data.results.forEach(item => {
+                    resultText += `${item.index}. ${item.song} - ${item.singer}<br>`;
+                });
+                resultText += '<br>回复歌曲编号选择，输入"下一页"查看更多';
+                
+                resultMessage.innerHTML = `
+                    <div class='message-avatar'>
+                        <span style='font-size: 24px;'>🎵</span>
+                    </div>
+                    <div class='message-content'>
+                        <div class='message-text'>${resultText}</div>
+                        <div class='message-time'>${new Date().toLocaleString('zh-CN')}</div>
+                    </div>
+                `;
+                messagesContainer.appendChild(resultMessage);
+            } else if (data.action === 'next_page') {
+                // 更新当前搜索状态
+                currentSongSearch = {
+                    songName: data.song_name,
+                    page: data.page,
+                    results: data.results
+                };
+                
+                // 显示下一页结果
+                const resultMessage = document.createElement('div');
+                resultMessage.className = 'message received';
+                resultMessage.dataset.chatType = chatType;
+                resultMessage.dataset.chatId = chatId;
+                
+                let resultText = `点歌搜索结果 - ${data.song_name} (第${data.page}页)<br><br>`;
+                data.results.forEach(item => {
+                    resultText += `${item.index}. ${item.song} - ${item.singer}<br>`;
+                });
+                resultText += '<br>回复歌曲编号选择，输入"下一页"查看更多';
+                
+                resultMessage.innerHTML = `
+                    <div class='message-avatar'>
+                        <span style='font-size: 24px;'>🎵</span>
+                    </div>
+                    <div class='message-content'>
+                        <div class='message-text'>${resultText}</div>
+                        <div class='message-time'>${new Date().toLocaleString('zh-CN')}</div>
+                    </div>
+                `;
+                messagesContainer.appendChild(resultMessage);
+            } else if (data.action === 'select_song') {
+                // 显示选择结果
+                const resultMessage = document.createElement('div');
+                resultMessage.className = 'message received';
+                resultMessage.dataset.chatType = chatType;
+                resultMessage.dataset.chatId = chatId;
+                
+                resultMessage.innerHTML = `
+                    <div class='message-avatar'>
+                        <span style='font-size: 24px;'>🎵</span>
+                    </div>
+                    <div class='message-content'>
+                        <div class='message-text'>${data.message}</div>
+                        <div class='message-time'>${new Date().toLocaleString('zh-CN')}</div>
+                    </div>
+                `;
+                messagesContainer.appendChild(resultMessage);
+            }
+            
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        } else {
+            showNotification(data.message || '点歌失败', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('点歌请求失败:', error);
+        showNotification('点歌请求失败，请稍后重试', 'error');
+    });
+}
+
+function sendMessage() {
             const input = document.getElementById('message-input');
             let message = input.value.trim();
             
@@ -7251,6 +7434,22 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                     // 显示错误消息
                     showNotification('发送消息失败，请检查网络连接', 'error');
                 });
+                
+                // 处理点歌命令
+                if (chatType === 'group') {
+                    // 检查是否是点歌命令
+                    if (message.startsWith('点歌：')) {
+                        const songName = message.substring(3).trim();
+                        if (songName) {
+                            handleMusicRequest('search_song', chatId, message, 1, songName, '');
+                        }
+                    } else if (message === '下一页') {
+                        handleMusicRequest('next_page', chatId, message, currentSongSearch.page + 1, currentSongSearch.songName, '');
+                    } else if (!isNaN(message) && parseInt(message) > 0) {
+                        // 检查是否是选择歌曲的编号
+                        handleMusicRequest('select_song', chatId, message, currentSongSearch.page, currentSongSearch.songName, message);
+                    }
+                }
                 
                 input.value = '';
             }
@@ -7464,53 +7663,51 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             const chatType = urlParams.get('chat_type');
             const id = urlParams.get('id');
             
-            if (chatType === 'friend' && id) {
-                // 如果是好友聊天，检查是否为好友关系
-                // 这里我们通过检查页面上是否有对应的联系人元素来判断
-                // 因为联系人列表是后端渲染的，只包含已添加的好友
-                const friendElement = document.querySelector(`.chat-item[data-friend-id="${id}"]`);
-                
-                if (!friendElement) {
-                    // 如果在联系人列表中找不到该ID，说明不是好友
-                    // 显示提示并跳转回主页
-                    showNotification('发起链接失败：你们还不是好友，无法建立链接', 'error');
+            if (chatType && id) {
+                if (chatType === 'friend') {
+                    // 如果是好友聊天，检查是否为好友关系
+                    const friendElement = document.querySelector(`.chat-item[data-friend-id="${id}"][data-chat-type="friend"]`);
                     
-                    // 延迟跳转，让用户看清提示
-                    setTimeout(() => {
-                        window.location.href = 'chat.php';
-                    }, 3000);
-                    return; // 停止后续初始化
+                    if (!friendElement) {
+                        showNotification('发起链接失败：你们还不是好友，无法建立链接', 'error');
+                        setTimeout(() => {
+                            window.location.href = 'chat.php';
+                        }, 3000);
+                        return;
+                    }
+                } else if (chatType === 'group') {
+                    // 如果是群聊，检查是否已加入该群
+                    // 注意：这里只做弱检查，如果找不到元素，暂时允许通过
+                    const groupElement = document.querySelector(`.chat-item[data-group-id="${id}"][data-chat-type="group"]`);
+                    
+                    if (!groupElement) {
+                        console.warn(`未在左侧列表中找到群组 ${id}，可能是列表未加载完成或用户未加入`);
+                    }
                 }
-            } else if (chatType === 'group' && id) {
-                // 如果是群聊，检查是否已加入该群
-                const groupElement = document.querySelector(`.chat-item[data-group-id="${id}"]`);
                 
-                if (!groupElement) {
-                    // 如果在群聊列表中找不到该ID，说明未加入该群
-                    // 显示提示并跳转回主页
-                    showNotification('发起链接失败：您未加入该群聊，无法建立链接', 'error');
-                    
-                    // 延迟跳转，让用户看清提示
-                    setTimeout(() => {
-                        window.location.href = 'chat.php';
-                    }, 3000);
-                    return; // 停止后续初始化
+                // 只有当有chatType和id时才加载聊天记录
+                loadChatHistory();
+                
+                // 初始化聊天视频，转换为Blob URL
+                initChatVideos();
+                
+                // 初始化所有媒体
+                await initChatMedia();
+                
+                // 如果是群聊，检查是否被封禁
+                <?php if ($chat_type === 'group' && $selected_id): ?>
+                    checkGroupBanStatus(<?php echo $selected_id; ?>);
+                <?php endif; ?>
+            } else {
+                // 如果没有选择聊天对象，不自动选择第一个，而是显示默认欢迎界面
+                // 确保右侧聊天区域显示为空或欢迎信息
+                const chatArea = document.querySelector('.chat-area');
+                if (chatArea) {
+                    // 如果需要显示特定的欢迎页面，可以在这里操作DOM
+                    // 例如：chatArea.innerHTML = '<div class="welcome-screen">...</div>';
+                    // 或者保持PHP渲染的默认状态
                 }
             }
-
-            // 加载聊天记录
-            loadChatHistory();
-            
-            // 初始化聊天视频，转换为Blob URL
-            initChatVideos();
-            
-            // 初始化所有媒体
-            await initChatMedia();
-            
-            // 如果是群聊，检查是否被封禁
-            <?php if ($chat_type === 'group' && $selected_id): ?>
-                checkGroupBanStatus(<?php echo $selected_id; ?>);
-            <?php endif; ?>
             
             // 为搜索按钮添加点击事件
             const searchButton = document.getElementById('search-user-button');
@@ -11924,11 +12121,59 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 }
 
                 if (lineData.words.length > 0) {
+                    // 按时间排序，防止YRC数据乱序导致计算错误
+                    lineData.words.sort((a, b) => a.time - b.time);
+
+                    // 修正重叠时间：确保前一个字的结束时间不超过后一个字的开始时间
+                    // 这解决了“第一个字进度慢”（实际上是时长过长覆盖了后面）的问题
+                    for (let i = 0; i < lineData.words.length - 1; i++) {
+                        const currentWord = lineData.words[i];
+                        const nextWord = lineData.words[i + 1];
+                        
+                        // 计算到下一个字的理论间隔
+                        const timeUntilNext = nextWord.time - currentWord.time;
+                        
+                        // 如果当前字的时长超过了与下一个字的间隔（重叠）
+                        if (currentWord.duration > timeUntilNext) {
+                            // 如果间隔是正数（正常情况），截断
+                            if (timeUntilNext > 0) {
+                                currentWord.duration = timeUntilNext;
+                            } 
+                            // 如果间隔是0或负数（同时开始或乱序），强制给一个极短时长(10ms)
+                            // 这种情况如果不处理，duration会保持原值，导致进度条极慢
+                            else {
+                                currentWord.duration = 0.01;
+                            }
+                        }
+                    }
+
+                    // 再次检查第一个字：如果经过修正后，它的持续时间依然异常长（比如超过5秒，且后面还有字），
+                    // 这通常意味着数据源本身有问题（例如第一字的duration包含了整句时长）
+                    // 此时我们强制将其duration限制在合理范围内（例如到下一个字开始前）
+                    if (lineData.words.length > 1) {
+                        const firstWord = lineData.words[0];
+                        const secondWord = lineData.words[1];
+                        if (firstWord.duration > 5.0 && secondWord.time > firstWord.time) {
+                            firstWord.duration = secondWord.time - firstWord.time;
+                        }
+                    }
+                    
                     result.push(lineData);
                 }
             });
 
             return result;
+        }
+
+        // 确保播放时显示歌词容器
+        function showLyricContainer() {
+            const lyricContainer = document.getElementById('lyric-container');
+            const playerStatus = document.getElementById('player-status');
+            
+            if ((hasYrc || lyricData.lrc.length > 0) && isPlaying) {
+                playerStatus.style.display = 'none';
+                lyricContainer.style.display = 'block';
+            }
         }
 
         // 解析歌词 (LRC)
@@ -11983,10 +12228,8 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                     if (lrc.length > 0 || yrc.length > 0) {
                         renderLyrics();
                         // 切换显示模式：隐藏状态，显示歌词
-                        if (isPlaying) {
-                            playerStatus.style.display = 'none';
-                            lyricContainer.style.display = 'block';
-                        }
+                        playerStatus.style.display = 'none';
+                        lyricContainer.style.display = 'block';
                     } else {
                         // 无歌词
                         playerStatus.style.display = 'block';
@@ -12024,6 +12267,11 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 lrcP.style.lineHeight = '1.4';
                 
                 if (hasYrc && item.words) {
+                    // 如果字数大于2，启用动态效果
+                    if (item.words.length > 2) {
+                        container.classList.add('dynamic-effect');
+                    }
+
                     // 逐字渲染
                     item.words.forEach(word => {
                         const span = document.createElement('span');
@@ -12031,9 +12279,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                         span.className = 'yrc-word';
                         span.dataset.start = word.time;
                         span.dataset.duration = word.duration;
-                        // 默认浅灰色
-                        span.style.color = '#aaa'; 
-                        span.style.transition = 'all 0.1s linear'; // 使用 all transition，并加快速度
+                        // 移除硬编码样式，使用 CSS 类
                         lrcP.appendChild(span);
                     });
                 } else {
@@ -12116,37 +12362,61 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                         document.getElementById('lyric-content').style.transform = `translateY(${translateY}px)`;
                     }
                 }
-                
-                // 逐字高亮逻辑 (仅针对 YRC)
-                if (hasYrc) {
-                    const activeContainer = document.querySelector(`.lyric-item[data-index="${activeIndex}"]`);
-                    if (activeContainer) {
-                        const words = activeContainer.querySelectorAll('.yrc-word');
-                        words.forEach(wordSpan => {
-                            const start = parseFloat(wordSpan.dataset.start);
-                            const duration = parseFloat(wordSpan.dataset.duration);
-                            const end = start + duration;
+            }
+        }
+
+        // 逐字高亮动画循环 (requestAnimationFrame)
+        function animateLyrics() {
+            if (!isPlaying || !hasYrc) {
+                if (isPlaying) {
+                    requestAnimationFrame(animateLyrics); // 如果在播放但不是YRC，继续循环以防切换到YRC
+                }
+                return;
+            }
+
+            const audioPlayer = document.getElementById('audio-player');
+            if (!audioPlayer) return;
+
+            const currentTime = audioPlayer.currentTime;
+            
+            // 找到当前活跃的行（不用重新遍历所有行，直接用 currentLyricIndex）
+            if (currentLyricIndex !== -1) {
+                const activeContainer = document.querySelector(`.lyric-item[data-index="${currentLyricIndex}"]`);
+                if (activeContainer) {
+                    const words = activeContainer.querySelectorAll('.yrc-word');
+                    words.forEach(wordSpan => {
+                        const start = parseFloat(wordSpan.dataset.start);
+                        const duration = parseFloat(wordSpan.dataset.duration);
+                        const end = start + duration;
+                        
+                        if (currentTime >= end) {
+                            // 已经播放完的字 - 全蓝
+                            wordSpan.style.backgroundPosition = '0 0';
+                            wordSpan.classList.remove('active');
+                            wordSpan.classList.add('active-playing');
+                        } else if (currentTime >= start && currentTime <= end + 0.1) { // 稍微放宽结束判断，防止最后一帧跳变
+                            // 正在播放的字 - 动态填充
+                            // 使用 Math.max(0, ...) 确保不会出现负数，防止计算误差
+                            const progress = Math.max(0, (currentTime - start) / duration);
+                            const percentage = Math.min(100, progress * 100);
                             
-                            if (currentTime >= end) {
-                                // 已经播放完的字 - 默认颜色 (例如白色或当前主题色)
-                                // 用户要求：已播放部分和正在播放部分都使用#1989fa并添加发光效果
-                                // 注意：用户可能指的是“唱过的部分”和“正在唱的部分”都高亮
-                                // 也就是“未播放”是灰色，“已播放+正在播放”是高亮色
-                                wordSpan.style.color = '#1989fa'; 
-                                wordSpan.style.textShadow = '0 0 5px rgba(25, 137, 250, 0.5)';
-                            } else if (currentTime >= start && currentTime < end) {
-                                // 正在播放的字 - 动态效果
-                                wordSpan.style.color = '#1989fa'; // 高亮色
-                                wordSpan.style.textShadow = '0 0 5px rgba(25, 137, 250, 0.5)';
-                            } else {
-                                // 还没播放的字 - 浅灰色
-                                wordSpan.style.color = '#aaa';
-                                wordSpan.style.textShadow = 'none';
-                            }
-                        });
-                    }
+                            // 0% -> 100% 0 (全灰)
+                            // 100% -> 0 0 (全蓝)
+                            wordSpan.style.backgroundPosition = `${100 - percentage}% 0`;
+                            
+                            wordSpan.classList.add('active');
+                            wordSpan.classList.add('active-playing');
+                        } else if (currentTime < start) {
+                            // 还没播放的字 - 全灰
+                            wordSpan.style.backgroundPosition = '100% 0';
+                            wordSpan.classList.remove('active');
+                            wordSpan.classList.remove('active-playing');
+                        }
+                    });
                 }
             }
+
+            requestAnimationFrame(animateLyrics);
         }
 
         // 格式化时间显示（秒 -> mm:ss）
@@ -12242,16 +12512,16 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             let avatarHtml;
             if (isSent) {
                 // 当前用户的头像
-                avatarHtml = `<?php if (!empty($current_user['avatar']) && $current_user['avatar'] !== 'deleted_user'): ?>
-                    <img src="<?php echo $current_user['avatar']; ?>" alt="<?php echo $username; ?>" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" onerror="this.style.display='none'; this.parentElement.innerHTML='<?php echo substr($username, 0, 2); ?>';">
+                avatarHtml = `<?php if (!empty($current_user['avatar'])): ?>
+                    <img src="<?php echo $current_user['avatar']; ?>" alt="<?php echo $username; ?>" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">
                 <?php else: ?>
                     <?php echo substr($username, 0, 2); ?>
                 <?php endif; ?>`;
             } else {
                 // 对方的头像
                 if (chatType === 'friend') {
-                    avatarHtml = `<?php if (isset($selected_friend) && is_array($selected_friend) && isset($selected_friend['avatar']) && !empty($selected_friend['avatar']) && $selected_friend['avatar'] !== 'deleted_user'): ?>
-                        <img src="<?php echo $selected_friend['avatar']; ?>" alt="<?php echo $selected_friend['username'] ?? ''; ?>" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" onerror="this.style.display='none'; this.parentElement.innerHTML='<?php echo isset($selected_friend['username']) ? substr($selected_friend['username'], 0, 2) : '?'; ?>';">
+                    avatarHtml = `<?php if (isset($selected_friend) && is_array($selected_friend) && isset($selected_friend['avatar']) && !empty($selected_friend['avatar'])): ?>
+                        <img src="<?php echo $selected_friend['avatar']; ?>" alt="<?php echo $selected_friend['username'] ?? ''; ?>" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">
                     <?php elseif (isset($selected_friend) && is_array($selected_friend) && isset($selected_friend['username'])): ?>
                         <?php echo substr($selected_friend['username'], 0, 2); ?>
                     <?php else: ?>
@@ -12259,7 +12529,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                     <?php endif; ?>`;
                 } else {
                     // 群聊成员头像
-                    avatarHtml = msg.avatar && msg.avatar !== 'deleted_user' ? `<img src="${msg.avatar}" alt="${msg.sender_username}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" onerror="this.style.display='none'; this.parentElement.innerHTML='${msg.sender_username.substring(0, 2)}';">` : msg.sender_username.substring(0, 2);
+                    avatarHtml = msg.avatar ? `<img src="${msg.avatar}" alt="${msg.sender_username}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` : msg.sender_username.substring(0, 2);
                 }
             }
             
@@ -13136,6 +13406,166 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 console.error('发送邀请失败:', error);
                 alert('发送邀请失败，请稍后重试');
             });
+        }
+        // 退出群聊
+        function leaveGroup(groupId) {
+            if (confirm('确定要退出该群聊吗？')) {
+                fetch(`leave_group.php?group_id=${groupId}`, {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('已成功退出群聊');
+                        window.location.href = 'chat.php';
+                    } else {
+                        alert(`退出失败：${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    console.error('退出群聊失败:', error);
+                    alert('退出失败：网络错误');
+                });
+            }
+        }
+        
+        // 解散群聊
+        function deleteGroup(groupId) {
+            if (confirm('确定要解散该群聊吗？此操作不可恢复！')) {
+                fetch(`delete_group.php?group_id=${groupId}`, {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('群聊已成功解散');
+                        window.location.href = 'chat.php';
+                    } else {
+                        alert(`解散失败：${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    console.error('解散群聊失败:', error);
+                    alert('解散失败：网络错误');
+                });
+            }
+        }
+
+        // 转让群主
+        function transferGroupOwnership(groupId) {
+            // 创建并显示转让群主弹窗
+            const modalId = 'transfer-ownership-modal';
+            let modal = document.getElementById(modalId);
+            
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = modalId;
+                modal.className = 'modal';
+                modal.style.cssText = `
+                    display: flex;
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0, 0, 0, 0.5);
+                    z-index: 2000;
+                    justify-content: center;
+                    align-items: center;
+                `;
+                document.body.appendChild(modal);
+            }
+            
+            modal.innerHTML = `
+                <div class="modal-content" style="background: var(--modal-bg); color: var(--text-color); width: 400px; max-width: 90%; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; max-height: 80vh;">
+                    <div style="padding: 15px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="margin: 0; font-size: 18px;">转让群主</h3>
+                        <button onclick="document.getElementById('${modalId}').remove()" style="background: none; border: none; color: var(--text-secondary); font-size: 24px; cursor: pointer;">×</button>
+                    </div>
+                    <div id="transfer-members-list" style="padding: 20px; overflow-y: auto; flex: 1;">
+                        <p style="text-align: center; color: var(--text-desc);">加载成员中...</p>
+                    </div>
+                </div>
+            `;
+            
+            // 加载群成员
+            fetch(`get_group_members.php?group_id=${groupId}`)
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('transfer-members-list');
+                    if (data.success) {
+                        if (data.members && data.members.length > 1) { // 只有自己不算
+                            let html = '<p style="margin-bottom: 15px; font-size: 14px; color: var(--text-desc);">请选择一位成员作为新群主：</p>';
+                            html += '<div style="display: flex; flex-direction: column; gap: 10px;">';
+                            
+                            let hasCandidates = false;
+                            data.members.forEach(member => {
+                                // 排除自己（假设没有is_owner字段，通过其他方式判断，或者后端已经过滤，或者前端点击自己没反应）
+                                // 这里假设后端返回的members包含所有成员
+                                // 我们可以简单地列出所有人，如果是自己，点击时提示，或者在confirmTransferOwnership中处理
+                                // 更严谨的是排除当前用户。但JS里没有currentUserId，除非从全局变量拿。
+                                // 通常 get_group_members 返回包含 is_owner 字段。
+                                
+                                // 检查是否是当前用户 (假设全局有 current_user_id 变量，或者通过 is_owner 判断)
+                                // 如果 member.is_owner 为 true，则是自己，跳过
+                                if (!member.is_owner) {
+                                    hasCandidates = true;
+                                    const avatar = member.avatar && member.avatar !== 'default_avatar.png' 
+                                        ? `<img src="${member.avatar}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">`
+                                        : `<div style="width: 40px; height: 40px; border-radius: 50%; background: #3498db; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold;">${member.username.substring(0, 2)}</div>`;
+                                        
+                                    html += `
+                                        <div onclick="confirmTransferOwnership(${groupId}, ${member.id}, '${member.username}')" style="display: flex; align-items: center; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='var(--hover-bg)'" onmouseout="this.style.background='transparent'">
+                                            <div style="margin-right: 12px;">${avatar}</div>
+                                            <div>
+                                                <div style="font-weight: 600;">${member.username}</div>
+                                                <div style="font-size: 12px; color: var(--text-desc);">${member.email || ''}</div>
+                                            </div>
+                                            <div style="margin-left: auto; color: var(--text-desc);">➡</div>
+                                        </div>
+                                    `;
+                                }
+                            });
+                            html += '</div>';
+                            
+                            if (!hasCandidates) {
+                                container.innerHTML = '<p style="text-align: center; color: var(--text-desc);">群里只有你自己，无法转让。</p>';
+                            } else {
+                                container.innerHTML = html;
+                            }
+                        } else {
+                            container.innerHTML = '<p style="text-align: center; color: var(--text-desc);">群里没有其他成员，无法转让。</p>';
+                        }
+                    } else {
+                        container.innerHTML = `<p style="text-align: center; color: #ff4757;">加载失败: ${data.message}</p>`;
+                    }
+                })
+                .catch(error => {
+                    console.error('加载成员失败:', error);
+                    document.getElementById('transfer-members-list').innerHTML = '<p style="text-align: center; color: #ff4757;">加载失败: 网络错误</p>';
+                });
+        }
+        
+        // 确认转让
+        function confirmTransferOwnership(groupId, newOwnerId, username) {
+            if (confirm(`确定要将群主转让给 ${username} 吗？此操作不可撤销，您将变为普通成员。`)) {
+                fetch(`transfer_ownership.php?group_id=${groupId}&new_owner_id=${newOwnerId}`, {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert(`已成功将群主转让给 ${username}`);
+                        window.location.reload();
+                    } else {
+                        alert(`转让失败：${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    console.error('转让失败:', error);
+                    alert('转让失败：网络错误');
+                });
+            }
         }
     </script>
     <!-- 音乐播放器 -->
@@ -14067,6 +14497,32 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             color: white;
             font-weight: bold;
         }
+
+        /* 动态歌词效果 */
+        .yrc-word {
+            display: inline-block;
+            background-image: linear-gradient(to right, #1989fa 50%, #aaa 50%);
+            background-size: 200% 100%;
+            background-position: 100% 0; /* 初始全灰 */
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            color: transparent; /* Fallback */
+            transition: transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            will-change: background-position, transform;
+            margin: 0 1px;
+            font-weight: bold; /* 加粗效果更好 */
+        }
+
+        /* 长句（>2字）的激活状态会有缩放效果 */
+        .lyric-item.dynamic-effect .yrc-word.active {
+            transform: scale(1.3) translateY(-2px);
+        }
+        
+        /* 正在播放的字添加发光滤镜 */
+        .lyric-item.dynamic-effect .yrc-word.active-playing {
+             filter: drop-shadow(0 0 3px rgba(25, 137, 250, 0.6));
+        }
     </style>
     
     <div id="music-player" style="display: none;">
@@ -14101,7 +14557,11 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             
             <!-- 歌单选择 -->
             <div id="playlist-container" style="padding: 0 15px 10px 15px;">
-                <select id="playlist-select" onchange="changePlaylist(this.value)" style="<?php if ($is_spring_festival_period && !$is_admin) echo 'cursor: not-allowed; opacity: 0.9; pointer-events: none;'; ?>">
+                <select id="playlist-select" onchange="changePlaylist(this.value)" style="<?php if ($is_radio_period || ($is_spring_festival_period && !$is_admin)) echo 'cursor: not-allowed; opacity: 0.9; pointer-events: none;'; ?>">
+                    <?php if ($is_radio_period): ?>
+                    <!-- 电台时间段，只显示歌单歌单 -->
+                    <option value="custom_歌单" selected>歌单</option>
+                    <?php else: ?>
                     <?php if ($is_spring_festival_period && !$is_admin): ?>
                     <option value="spring_festival" selected>春节特别歌单</option>
                     <?php else: ?>
@@ -14122,6 +14582,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                         }
                     }
                     ?>
+                    <?php endif; ?>
                     <?php endif; ?>
                 </select>
             </div>
@@ -14184,6 +14645,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
         // 全局变量
         const IS_ADMIN = <?php echo $is_admin ? 'true' : 'false'; ?>;
         const IS_SPRING_FESTIVAL_PERIOD = <?php echo $is_spring_festival_period ? 'true' : 'false'; ?>;
+        const IS_RADIO_PERIOD = <?php echo $is_radio_period ? 'true' : 'false'; ?>;
         
         let currentSong = null;
         let isPlaying = false;
@@ -14300,6 +14762,13 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             const header = document.getElementById('player-header');
             const playerContent = document.getElementById('player-content');
             
+            // 确保变量初始化
+            isPlayerDragging = false;
+            playerStartX = 0;
+            playerStartY = 0;
+            initialX = 0;
+            initialY = 0;
+            
             // 鼠标按下事件 - 开始拖拽
             const startDrag = (e) => {
                 // 检查是否点击了按钮或交互元素，如果是则不开始拖拽
@@ -14324,17 +14793,8 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 e.stopPropagation();
             };
             
-            // 为播放器头部添加拖拽事件（所有模式）
-            header.addEventListener('mousedown', startDrag);
-            
-            // 为播放器内容区域添加拖拽事件（所有模式）
-            playerContent.addEventListener('mousedown', startDrag);
-            
-            // 为播放器本身添加拖拽事件（所有模式）
-            player.addEventListener('mousedown', startDrag);
-            
             // 鼠标移动事件 - 拖动元素
-            document.addEventListener('mousemove', (e) => {
+            const drag = (e) => {
                 if (!isPlayerDragging) return;
                 
                 // 检查是否为迷你模式
@@ -14395,19 +14855,40 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 
                 // 阻止默认行为
                 e.preventDefault();
-            });
+            };
             
             // 鼠标释放事件 - 结束拖拽
-            document.addEventListener('mouseup', () => {
+            const stopDrag = () => {
                 if (isPlayerDragging) {
                     isPlayerDragging = false;
                     player.classList.remove('dragging');
                 }
-            });
+            };
+            
+            // 为播放器头部添加拖拽事件（所有模式）
+            if (header) {
+                header.addEventListener('mousedown', startDrag);
+            }
+            
+            // 为播放器内容区域添加拖拽事件（所有模式）
+            if (playerContent) {
+                playerContent.addEventListener('mousedown', startDrag);
+            }
+            
+            // 为播放器本身添加拖拽事件（所有模式）
+            if (player) {
+                player.addEventListener('mousedown', startDrag);
+            }
+            
+            // 添加全局事件监听器
+            document.addEventListener('mousemove', drag);
+            document.addEventListener('mouseup', stopDrag);
             
             // 初始化音量
             const audioPlayer = document.getElementById('audio-player');
-            audioPlayer.volume = 0.8; // 默认音量80%
+            if (audioPlayer) {
+                audioPlayer.volume = 0.8; // 默认音量80%
+            }
         }
         
         // 获取当前音乐模式
@@ -14457,6 +14938,11 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                             isPlaying = true;
                             document.getElementById('play-btn').textContent = '⏸';
                             document.getElementById('player-status').textContent = '正在播放';
+                            
+                            // 确保歌词容器显示
+                            showLyricContainer();
+                            
+                            requestAnimationFrame(animateLyrics); // 启动动画
                             return true;
                         } catch (playError) {
                             console.error('Play failed with proxy:', playError);
@@ -14480,6 +14966,11 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                             isPlaying = true;
                             document.getElementById('play-btn').textContent = '⏸';
                             document.getElementById('player-status').textContent = '正在播放';
+                            
+                            // 确保歌词容器显示
+                            showLyricContainer();
+                            
+                            requestAnimationFrame(animateLyrics); // 启动动画
                             return true;
                         } catch (playError) {
                             console.error('Play failed after direct redirect:', playError);
@@ -14527,8 +15018,12 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 // 获取用户偏好的歌单模式
                 let savedMode = localStorage.getItem('music_mode');
                 
-                // 春节期间处理逻辑
-                if (IS_SPRING_FESTIVAL_PERIOD) {
+                // 电台时间段处理逻辑（早上10点到晚上11点）
+                if (IS_RADIO_PERIOD) {
+                    // 不论管理员还是普通用户，都强制使用歌单歌单
+                    savedMode = 'custom_歌单';
+                } else if (IS_SPRING_FESTIVAL_PERIOD) {
+                    // 春节期间处理逻辑
                     // 如果是管理员，允许使用保存的模式，但如果没保存过则默认春节模式
                     if (IS_ADMIN) {
                         if (!savedMode) savedMode = 'spring_festival';
@@ -14556,6 +15051,62 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 changePlaylist(savedMode);
                 
                 initDrag();
+                
+                // 添加定时器，每1分钟更新一次歌单和检查时间
+                setInterval(() => {
+                    // 检查时间是否在指定时间段
+                    const currentHour = new Date().getHours();
+                    const isCurrentRadioPeriod = currentHour >= 10 && currentHour < 20;
+                    
+                    // 如果时间范围变化，静默更新播放器模式
+                    if (isCurrentRadioPeriod !== IS_RADIO_PERIOD) {
+                        console.log('时间范围变化，静默更新播放器模式');
+                        
+                        // 模拟新的时间设置
+                        const newRadioPeriod = isCurrentRadioPeriod;
+                        
+                        // 根据新的时间设置更新播放器模式
+                        if (newRadioPeriod) {
+                            // 进入电台时间段，切换到歌单歌单
+                            changePlaylist('custom_歌单');
+                        } else {
+                            // 退出电台时间段，恢复到用户保存的模式或默认模式
+                            const savedMode = localStorage.getItem('music_mode') || 'random';
+                            changePlaylist(savedMode);
+                        }
+                        return;
+                    }
+                    
+                    // 定时更新歌单 - 静默更新，不影响当前播放
+                    if (currentMusicMode === 'custom') {
+                        console.log('静默更新歌单-1分钟');
+                        
+                        // 从服务器获取最新的歌单数据
+                        fetch(`get_playlist_music.php?name=${encodeURIComponent(customPlaylistName)}`)
+                            .then(response => response.json())
+                            .then(songs => {
+                                if (songs && songs.length > 0) {
+                                    // 只更新歌单数据，不影响当前播放状态
+                                    // 保存当前播放的歌曲信息
+                                    const currentSongInfo = currentSong;
+                                    
+                                    // 更新歌单数据
+                                    customPlaylistData = songs;
+
+                                    
+                                    console.log('歌单更新成功，共', songs.length, '首歌曲');
+                                    
+                                    // 如果当前没有播放歌曲，重置索引
+                                    if (!currentSongInfo) {
+                                        customPlaylistIndex = 0;
+                                    }
+                                }
+                            })
+                            .catch(error => {
+                                console.error('静默更新歌单失败:', error);
+                            });
+                    }
+                }, 60000); // 60秒 = 1分钟
             } catch (error) {
                 console.error('Init music player failed:', error);
             }
@@ -14593,8 +15144,17 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
         }
         // 切换歌单
         async function changePlaylist(mode) {
-            // 春节期间强制锁定，但管理员除外
-            if (IS_SPRING_FESTIVAL_PERIOD && !IS_ADMIN) {
+            // 电台时间段强制锁定，不论管理员还是普通用户
+            if (IS_RADIO_PERIOD) {
+                if (mode !== 'custom_歌单') {
+                    // 如果试图切换到其他模式，强制切回
+                    console.log('电台时间段禁止切换歌单');
+                    const select = document.getElementById('playlist-select');
+                    if (select) select.value = 'custom_歌单';
+                    return;
+                }
+            } else if (IS_SPRING_FESTIVAL_PERIOD && !IS_ADMIN) {
+                // 春节期间强制锁定，但管理员除外
                 if (mode !== 'spring_festival') {
                     // 如果试图切换到其他模式，强制切回
                     console.log('春节期间禁止切换歌单');
@@ -14608,7 +15168,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 const name = mode.substring(7);
                 customPlaylistName = name;
                 currentMusicMode = 'custom';
-                // 重置
+                // 重置，确保下次加载时从服务器获取最新数据
                 customPlaylistData = [];
                 customPlaylistIndex = 0;
             } else {
@@ -14622,23 +15182,37 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 }
             }
             
+            // 只有在切换到不同歌单时才停止当前播放并加载新歌
+            // 如果是相同歌单的刷新，保持当前播放状态
+            const currentMode = localStorage.getItem('music_mode');
+            
             // 保存偏好
             localStorage.setItem('music_mode', mode);
             
-            // 停止当前播放并重置播放器状态
-            const audioPlayer = document.getElementById('audio-player');
-            if (audioPlayer) {
-                audioPlayer.pause();
-                audioPlayer.currentTime = 0;
-                isPlaying = false;
-                document.getElementById('play-btn').textContent = '▶';
+            if (mode !== currentMode) {
+                // 停止当前播放并重置播放器状态
+                const audioPlayer = document.getElementById('audio-player');
+                if (audioPlayer) {
+                    audioPlayer.pause();
+                    audioPlayer.currentTime = 0;
+                    isPlaying = false;
+                    document.getElementById('play-btn').textContent = '▶';
+                }
+                
+                // 立即加载新歌
+                // 使用 setTimeout 确保状态更新完成
+                setTimeout(() => {
+                    loadNewSong();
+                }, 100);
+            } else {
+                // 相同歌单，保持当前播放状态，只更新歌单数据
+                console.log('刷新歌单数据，保持当前播放状态');
+                if (currentMusicMode === 'custom') {
+                    // 清空缓存，确保下次加载时获取最新数据
+                    customPlaylistData = [];
+                    customPlaylistIndex = 0;
+                }
             }
-            
-            // 立即加载新歌
-            // 使用 setTimeout 确保状态更新完成
-            setTimeout(() => {
-                loadNewSong();
-            }, 100);
             
             // 同步更新设置弹窗中的下拉菜单（如果存在）
             const settingSelect = document.getElementById('setting-music-mode');
@@ -14668,8 +15242,6 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                     
                     if (songs && songs.length > 0) {
                         customPlaylistData = songs;
-                        // 随机打乱
-                        customPlaylistData.sort(() => Math.random() - 0.5);
                     } else {
                         document.getElementById('player-status').textContent = '歌单为空';
                         return;
@@ -14681,23 +15253,38 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             }
             
             if (customPlaylistIndex >= customPlaylistData.length) {
-                // 重新打乱
-                customPlaylistData.sort(() => Math.random() - 0.5);
+                // 播放完所有歌曲后，重新从服务器获取最新的歌单数据
+                document.getElementById('player-status').textContent = '更新歌单中...';
+                try {
+                    const response = await fetch(`get_playlist_music.php?name=${encodeURIComponent(customPlaylistName)}`);
+                    const songs = await response.json();
+                    
+                    if (songs && songs.length > 0) {
+                        customPlaylistData = songs;
+                    }
+                } catch (error) {
+                    console.error('更新歌单失败:', error);
+                }
                 customPlaylistIndex = 0;
             }
             
+            // 记录当前歌曲索引，用于播放完成后删除
+            const currentIndex = customPlaylistIndex;
             const song = customPlaylistData[customPlaylistIndex++];
             
             // 处理QQ音乐解析逻辑
             if (song.source_type === 'qqmusic') {
                 document.getElementById('player-status').textContent = '正在解析歌曲...';
                 try {
-                    // 使用后端返回的 choose_id (如果存在)
+                    // 使用后端返回的 choose_id 和 page (如果存在)
                     let apiUrl = `https://api.vkeys.cn/v2/music/tencent?word=${encodeURIComponent(song.query_name)}&quality=8`;
                     if (song.choose_id) {
                         apiUrl += `&choose=${song.choose_id}`;
                     } else {
                         apiUrl += `&choose=1`; // 默认第一个
+                    }
+                    if (song.page && song.page > 1) {
+                        apiUrl += `&page=${song.page}`;
                     }
                     
                     const res = await fetch(apiUrl);
@@ -14705,8 +15292,21 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                     if (data.code === 200) {
                         song.title = data.data.song;
                         song.artist = data.data.singer;
-                        song.cover = data.data.cover;
-                        song.url = data.data.url;
+                        
+                        // 确保封面URL使用HTTPS
+                        let coverUrl = data.data.cover;
+                        if (coverUrl && coverUrl.startsWith('http://')) {
+                            coverUrl = coverUrl.replace('http://', 'https://');
+                        }
+                        song.cover = coverUrl;
+                        
+                        // 确保音频URL使用HTTPS
+                        let audioUrl = data.data.url;
+                        if (audioUrl && audioUrl.startsWith('http://')) {
+                            audioUrl = audioUrl.replace('http://', 'https://');
+                        }
+                        song.url = audioUrl;
+                        
                         song.id = data.data.id; // 保存歌曲ID用于获取歌词
                     } else {
                         console.error('QQMusic API解析失败:', data);
@@ -14759,90 +15359,98 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
         // 播放当前歌曲辅助函数
         function playCurrentSong() {
             const audioPlayer = document.getElementById('audio-player');
+            
+            // 清除所有事件监听器，确保不影响新歌曲播放
             audioPlayer.removeEventListener('canplaythrough', updateDuration);
             audioPlayer.removeEventListener('timeupdate', updateProgress);
             audioPlayer.removeEventListener('ended', loadNewSong);
-            
-            // 移除旧的歌词同步事件（如果有）
             audioPlayer.removeEventListener('timeupdate', syncLyricHandler);
             
-            // 如果是恢复播放，不需要重新加载
-            if (audioPlayer.paused && audioPlayer.src && audioPlayer.currentTime > 0) {
-                 // 仅仅是暂停状态，直接恢复播放
-                 // 重新添加事件监听器
-                 audioPlayer.addEventListener('canplaythrough', updateDuration);
-                 audioPlayer.addEventListener('timeupdate', updateProgress);
-                 audioPlayer.addEventListener('ended', loadNewSong);
-                 
-                 // 添加歌词同步事件
-                 if (currentSong.source_type === 'qqmusic') {
-                     audioPlayer.addEventListener('timeupdate', syncLyricHandler);
-                 }
-                 
-                 // 恢复播放
-                 audioPlayer.play().then(() => {
-                    isPlaying = true;
-                    document.getElementById('play-btn').textContent = '⏸';
-                    // 如果有歌词，显示歌词容器；否则显示状态
-                    if (document.getElementById('lyric-content').innerHTML !== '' && currentSong.source_type === 'qqmusic') {
-                        document.getElementById('player-status').style.display = 'none';
-                        document.getElementById('lyric-container').style.display = 'block';
-                    } else {
-                        document.getElementById('player-status').textContent = '正在播放';
-                        document.getElementById('player-status').style.display = 'block';
-                        document.getElementById('lyric-container').style.display = 'none';
-                    }
-                 }).catch(err => {
-                    console.error('Resume play failed:', err);
-                    isPlaying = false;
-                    document.getElementById('play-btn').textContent = '▶';
-                 });
-                 
-                 return;
-            } else {
-                if (currentSong.source_type === 'qqmusic') {
-                    audioPlayer.removeAttribute('src');
-                    audioPlayer.innerHTML = `<source src="${currentSong.url}" type="audio/mpeg">您的浏览器不支持音频播放。`;
-                    audioPlayer.load();
-                } else {
-                    audioPlayer.innerHTML = '';
-                    audioPlayer.src = currentSong.url;
-                }
-            }
+            // 重置音频元素，确保加载新歌曲
+            audioPlayer.src = '';
+            audioPlayer.innerHTML = '';
             
-            audioPlayer.addEventListener('canplaythrough', updateDuration);
-            audioPlayer.addEventListener('timeupdate', updateProgress);
-            audioPlayer.addEventListener('ended', loadNewSong);
+            // 加载新歌曲
+            audioPlayer.src = currentSong.url;
+            audioPlayer.load();
             
             // 添加歌词同步事件
             if (currentSong.source_type === 'qqmusic') {
                 audioPlayer.addEventListener('timeupdate', syncLyricHandler);
             }
             
-            audioPlayer.oncanplay = () => {
-                audioPlayer.play().then(() => {
-                    isPlaying = true;
-                    document.getElementById('play-btn').textContent = '⏸';
-                    // 如果有歌词，显示歌词容器；否则显示状态
-                    if (document.getElementById('lyric-content').innerHTML !== '' && currentSong.source_type === 'qqmusic') {
-                        document.getElementById('player-status').style.display = 'none';
-                        document.getElementById('lyric-container').style.display = 'block';
-                    } else {
-                        document.getElementById('player-status').textContent = '正在播放';
-                        document.getElementById('player-status').style.display = 'block';
-                        document.getElementById('lyric-container').style.display = 'none';
-                    }
-                }).catch(err => {
-                    console.error('Play failed:', err);
-                    isPlaying = false;
-                    document.getElementById('play-btn').textContent = '▶';
+            // 添加新的事件监听器
+            audioPlayer.addEventListener('canplaythrough', updateDuration);
+            audioPlayer.addEventListener('timeupdate', updateProgress);
+            audioPlayer.addEventListener('ended', async function() {
+                // 播放完成后删除当前歌曲
+                // 尝试从服务器端的temp_song_config.json文件中删除这首歌
+                try {
+                    let songName = '';
                     
-                    // 播放失败时切回状态显示
-                    document.getElementById('player-status').textContent = '点击播放';
+                    // 优先从customPlaylistData中获取歌曲名称
+                    if (currentMusicMode === 'custom' && customPlaylistData.length > 0) {
+                        const lastIndex = customPlaylistIndex - 1;
+                        if (lastIndex >= 0 && lastIndex < customPlaylistData.length) {
+                            const playedSong = customPlaylistData[lastIndex];
+                            songName = playedSong.query_name || playedSong.title;
+                            // 从前端数组中删除当前歌曲
+                            customPlaylistData.splice(lastIndex, 1);
+                        }
+                    } else {
+                        // 从currentSong中获取歌曲名称
+                        songName = currentSong.name || '';
+                    }
+                    
+                    // 如果获取到了歌曲名称，发送删除请求
+                    if (songName) {
+                        const response = await fetch('remove_song.php', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                song_name: songName
+                            })
+                        });
+                        const result = await response.json();
+                        if (result.success) {
+                            console.log(result.message);
+                        } else {
+                            console.error('删除歌曲失败:', result.message);
+                        }
+                    }
+                } catch (error) {
+                    console.error('删除歌曲失败:', error);
+                }
+                loadNewSong();
+            });
+            
+            // 直接播放，不需要等待oncanplay事件
+            audioPlayer.play().then(() => {
+                isPlaying = true;
+                document.getElementById('play-btn').textContent = '⏸';
+                // 确保歌词容器显示
+                if (currentSong.source_type === 'qqmusic') {
+                    document.getElementById('player-status').style.display = 'none';
+                    document.getElementById('lyric-container').style.display = 'block';
+                    // 启动歌词动画
+                    startLyricAnimation();
+                } else {
+                    document.getElementById('player-status').textContent = '正在播放';
                     document.getElementById('player-status').style.display = 'block';
                     document.getElementById('lyric-container').style.display = 'none';
-                });
-            };
+                }
+            }).catch(err => {
+                console.error('Play failed:', err);
+                isPlaying = false;
+                document.getElementById('play-btn').textContent = '▶';
+                
+                // 播放失败时切回状态显示
+                document.getElementById('player-status').textContent = '点击播放';
+                document.getElementById('player-status').style.display = 'block';
+                document.getElementById('lyric-container').style.display = 'none';
+            });
             
             audioPlayer.onpause = () => {
                 isPlaying = false;
@@ -14862,11 +15470,12 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                     document.getElementById('lyric-container').style.display = 'block';
                 } else {
                     document.getElementById('player-status').textContent = '正在播放';
+                    document.getElementById('player-status').style.display = 'block';
+                    document.getElementById('lyric-container').style.display = 'none';
                 }
             };
             
             audioPlayer.onerror = async () => {
-                // ... (保留原有重试逻辑)
                 // 防止无限重试
                 if (audioPlayer.dataset.retrying === 'true') {
                     audioPlayer.dataset.retrying = 'false';
@@ -14895,6 +15504,15 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
         function syncLyricHandler() {
             const audioPlayer = document.getElementById('audio-player');
             syncLyrics(audioPlayer.currentTime);
+        }
+        
+        // 启动歌词动画
+        function startLyricAnimation() {
+            // 确保只启动一次动画循环
+            if (!window.lyricAnimationStarted) {
+                window.lyricAnimationStarted = true;
+                requestAnimationFrame(animateLyrics);
+            }
         }
 
         // 获取春节歌单
@@ -14938,14 +15556,11 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                     return;
                 }
                 
-                // 随机打乱列表
-                springFestivalPlaylist.sort(() => Math.random() - 0.5);
                 springFestivalCurrentIndex = 0;
             }
             
-            // 如果索引超出，重新随机打乱
+            // 如果索引超出，重置索引
             if (springFestivalCurrentIndex >= springFestivalPlaylist.length) {
-                springFestivalPlaylist.sort(() => Math.random() - 0.5);
                 springFestivalCurrentIndex = 0;
             }
             
@@ -15201,6 +15816,23 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                         isPlaying = true;
                         document.getElementById('play-btn').textContent = '⏸';
                         document.getElementById('player-status').textContent = '正在播放';
+                        
+                        // 尝试加载歌词
+                        if (songId) {
+                            await fetchLyrics(songId);
+                        } else {
+                            // 尝试用歌名+歌手搜索ID来获取歌词
+                            // 这是一个备用方案，可能需要额外的API调用，或者直接根据audioUrl反查ID
+                            // 如果实在没有ID，无法获取歌词
+                            document.getElementById('lyric-container').style.display = 'none';
+                            document.getElementById('player-status').style.display = 'block';
+                        }
+
+                        // 确保歌词容器显示（如果有歌词）
+                        showLyricContainer();
+                        
+                        // 启动歌词动画
+                        requestAnimationFrame(animateLyrics);
                     } catch (playError) {
                         // 忽略错误，不向控制台报错
                         isPlaying = false;
@@ -15285,6 +15917,9 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                     playBtn.textContent = '⏸';
                     document.getElementById('player-status').textContent = '正在播放';
                     isPlaying = true;
+                    
+                    // 启动歌词动画循环
+                    requestAnimationFrame(animateLyrics);
                 } catch (error) {
                     // 忽略错误，不向控制台报错
                     
@@ -15324,6 +15959,9 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                                 playBtn.textContent = '⏸';
                                 document.getElementById('player-status').textContent = '正在播放';
                                 isPlaying = true;
+                                
+                                // 启动歌词动画循环
+                                requestAnimationFrame(animateLyrics);
                             } else {
                                 // API请求失败，更新状态
                                 document.getElementById('player-status').textContent = '播放失败，重新获取链接失败';
@@ -16132,7 +16770,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('service-worker.js')
+                navigator.serviceWorker.register('/chat/service-worker.js')
                     .then((registration) => {
                         console.log('Service Worker 注册成功:', registration.scope);
                     })

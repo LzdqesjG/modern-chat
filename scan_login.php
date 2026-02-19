@@ -83,6 +83,25 @@ function isBrowserBanned($conn, $fingerprint) {
     }
 }
 
+// 设备验证函数
+function validateDevice($app_type) {
+    $user_agent = $_SERVER['HTTP_USER_AGENT'];
+    
+    switch (strtolower($app_type)) {
+        case 'android':
+            return strpos(strtolower($user_agent), 'android') !== false;
+        case 'ios':
+            return (strpos(strtolower($user_agent), 'iphone') !== false || 
+                    strpos(strtolower($user_agent), 'ipad') !== false || 
+                    strpos(strtolower($user_agent), 'ios') !== false);
+        case 'harmonyos':
+            return strpos(strtolower($user_agent), 'harmonyos') !== false || 
+                   strpos(strtolower($user_agent), 'huawei') !== false;
+        default:
+            return false;
+    }
+}
+
 // 主处理逻辑
 if (isset($_GET['check_status'])) {
     // 检查登录状态
@@ -146,6 +165,7 @@ if (isset($_GET['check_status'])) {
     $action = isset($_POST['action']) ? $_POST['action'] : '';
     $user = isset($_POST['user']) ? $_POST['user'] : '';
     $source = isset($_POST['source']) ? $_POST['source'] : '';
+    $app = isset($_POST['app']) ? $_POST['app'] : '';
     
     if (empty($qid) || empty($source)) {
         echo json_encode(['success' => false, 'message' => '参数错误: 缺少必要参数']);
@@ -155,6 +175,14 @@ if (isset($_GET['check_status'])) {
     if (!in_array($source, ['mobilechat.php', 'Newchatmobile.php'])) {
         echo json_encode(['success' => false, 'message' => '非法请求来源: ' . $source]);
         exit;
+    }
+    
+    // 验证设备类型
+    if (!empty($app)) {
+        if (!validateDevice($app)) {
+            echo json_encode(['success' => false, 'message' => '设备类型验证失败: ' . $app]);
+            exit;
+        }
     }
     
     try {
