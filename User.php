@@ -15,15 +15,9 @@ class User {
     // 用户注册
     public function register($username, $email, $password, $phone, $ip_address = '') {
         try {
-            // 检查用户名、邮箱或手机号是否已存在
-            $sql = "SELECT username, email, phone FROM users WHERE username = ? OR email = ?";
+            // 检查用户名、邮箱是否已存在（兼容无 phone 列的表）
+            $sql = "SELECT username, email FROM users WHERE username = ? OR email = ?";
             $params = [$username, $email];
-            
-            if (!empty($phone)) {
-                $sql .= " OR phone = ?";
-                $params[] = $phone;
-            }
-            
             $stmt = $this->conn->prepare($sql);
             $stmt->execute($params);
             
@@ -35,25 +29,34 @@ class User {
                 if ($existing['email'] === $email) {
                     return ['success' => false, 'message' => '邮箱已存在'];
                 }
-                if (!empty($phone) && $existing['phone'] === $phone) {
-                    return ['success' => false, 'message' => '手机号已注册'];
-                }
-                return ['success' => false, 'message' => '用户名、邮箱或手机号已存在'];
+                return ['success' => false, 'message' => '用户名或邮箱已存在'];
             }
             
             // 哈希密码
             $hashedPassword = password_hash($password, PASSWORD_DEFAULT, ['cost' => 12]);
             
-            // 插入新用户
-            $stmt = $this->conn->prepare("INSERT INTO users (username, email, password, phone) VALUES (?, ?, ?, ?)");
-            $stmt->execute([$username, $email, $hashedPassword, $phone]);
-            
+            // 插入新用户（兼容无 phone 列的表结构）
+            try {
+                $stmt = $this->conn->prepare("INSERT INTO users (username, email, password, phone) VALUES (?, ?, ?, ?)");
+                $stmt->execute([$username, $email, $hashedPassword, $phone]);
+            } catch (PDOException $e) {
+                if (strpos($e->getMessage(), 'phone') !== false) {
+                    $stmt = $this->conn->prepare("INSERT INTO users (username, email, password) VALUES (?, ?, ?)");
+                    $stmt->execute([$username, $email, $hashedPassword]);
+                } else {
+                    throw $e;
+                }
+            }
             $user_id = $this->conn->lastInsertId();
             
-            // 将IP地址插入到IP注册记录表
+            // 将IP地址插入到IP注册记录表（表不存在时忽略）
             if (!empty($ip_address)) {
-                $stmt = $this->conn->prepare("INSERT INTO ip_registrations (user_id, ip_address) VALUES (?, ?)");
-                $stmt->execute([$user_id, $ip_address]);
+                try {
+                    $stmt = $this->conn->prepare("INSERT INTO ip_registrations (user_id, ip_address) VALUES (?, ?)");
+                    $stmt->execute([$user_id, $ip_address]);
+                } catch (PDOException $e) {
+                    error_log("ip_registrations insert skip: " . $e->getMessage());
+                }
             }
             
             return ['success' => true, 'message' => '注册成功', 'user_id' => $user_id];

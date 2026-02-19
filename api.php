@@ -41,17 +41,25 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// 获取请求数据 (兼容 JSON 和 Form Data)
+// 获取请求数据 (兼容 JSON 和 Form Data，APP 端可能发 JSON 但 Content-Type 不准确)
 function get_request_data() {
     $content_type = $_SERVER['CONTENT_TYPE'] ?? '';
+    $input = file_get_contents('php://input');
+    $data = [];
     
-    if (strpos($content_type, 'application/json') !== false) {
-        $json = file_get_contents('php://input');
-        $data = json_decode($json, true);
-        return is_array($data) ? $data : [];
+    if (!empty($input)) {
+        $decoded = json_decode($input, true);
+        if (is_array($decoded)) {
+            $data = $decoded;
+        }
     }
-    
-    return $_POST;
+    if (strpos($content_type, 'application/json') !== false && !empty($data)) {
+        return $data;
+    }
+    if (!empty($_POST)) {
+        return array_merge($data, $_POST);
+    }
+    return $data;
 }
 
 // 检测是否为状态检测请求（无参数或特定参数）
@@ -285,7 +293,11 @@ try {
                     $ip_address = $_SERVER['REMOTE_ADDR'] ?? '';
                     
                     if (empty($username) || empty($email) || empty($password)) {
-                        response_error('用户名、邮箱和密码不能为空');
+                        $hint = [];
+                        if (empty($username)) $hint[] = '用户名';
+                        if (empty($email)) $hint[] = '邮箱';
+                        if (empty($password)) $hint[] = '密码';
+                        response_error('请填写完整：' . implode('、', $hint) . '（若已填写仍报错，请检查网络或联系管理员）');
                     }
                     
                     $result = $user->register($username, $email, $password, $phone, $ip_address);
