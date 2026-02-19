@@ -94,6 +94,17 @@ if (isset($_GET['check_status'])) {
     }
     
     try {
+        // 优化：添加qid索引（如果不存在）
+        $stmt = $conn->prepare("SHOW INDEX FROM scan_login WHERE Key_name = 'idx_qid'");
+        $stmt->execute();
+        $index_exists = $stmt->fetch();
+        
+        if (!$index_exists) {
+            $conn->exec("CREATE INDEX idx_qid ON scan_login(qid)");
+            error_log("Created index idx_qid on scan_login table");
+        }
+        
+        // 优化：使用索引查询，提高速度
         $sql = "SELECT * FROM scan_login WHERE qid = ?";
         $stmt = $conn->prepare($sql);
         $stmt->execute([$qid]);
@@ -120,14 +131,15 @@ if (isset($_GET['check_status'])) {
             
             echo json_encode(['status' => 'success', 'token' => $token, 'message' => '登录成功']);
         } elseif ($scan_record['status'] === 'scanned') {
-            echo json_encode(['status' => 'scanned', 'message' => '等待手机确认登录', 'debug' => '当前状态: ' . $scan_record['status']]);
+            echo json_encode(['status' => 'scanned', 'message' => '等待手机确认登录']);
         } elseif ($scan_record['status'] === 'rejected') {
             echo json_encode(['status' => 'rejected', 'message' => '手机端拒绝了登录请求，请重试']);
         } else {
-            echo json_encode(['status' => 'pending', 'message' => '等待扫描', 'debug' => '当前状态: ' . $scan_record['status']]);
+            echo json_encode(['status' => 'pending', 'message' => '等待扫描']);
         }
     } catch(PDOException $e) {
-        echo json_encode(['status' => 'error', 'message' => '检查登录状态失败: ' . $e->getMessage()]);
+        error_log('Check login status error: ' . $e->getMessage());
+        echo json_encode(['status' => 'error', 'message' => '检查登录状态失败']);
     }
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $qid = isset($_POST['qid']) ? $_POST['qid'] : '';
