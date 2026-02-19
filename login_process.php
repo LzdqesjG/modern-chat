@@ -32,8 +32,8 @@ try {
     }
     
     // 确保IP相关表存�?    // 不要直接包含db.sql文件，这会导致SQL内容被输�?    
-    // 已通过install_tables.php脚本或createGroupTables函数创建了所需表
-    }
+    // 已通过install_tables.php脚本或createGroupTables函数创建了所需�?
+    } 
     catch (PDOException $e) {
     error_log("Field setup error: " . $e->getMessage());
 }
