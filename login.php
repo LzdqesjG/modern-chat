@@ -189,7 +189,7 @@ require_once 'db.php';
         #qr-code {
             display: inline-block;
             padding: 10px;
-            background: white;
+            background: black;
             border-radius: 12px;
             box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
         }

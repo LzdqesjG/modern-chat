@@ -3962,12 +3962,21 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             hint.textContent = '正在扫描二维码...';
             hint.style.color = '#4caf50';
             
+            // 降低canvas分辨率以提高处理速度
+            const scale = 0.5; // 缩小到原来的一半
+            
             function scanFrame() {
                 if (video.readyState === video.HAVE_ENOUGH_DATA) {
                     // 确保canvas尺寸与视频尺寸匹配
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    canvas.width = video.videoWidth * scale;
+                    canvas.height = video.videoHeight * scale;
+                    
+                    // 绘制缩放后的图像
+                    ctx.drawImage(
+                        video, 
+                        0, 0, video.videoWidth, video.videoHeight, 
+                        0, 0, canvas.width, canvas.height
+                    );
                     
                     try {
                         // 获取图像数据
@@ -3993,10 +4002,10 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                             return;
                         }
                         
-                        // 1. 首先应用背景转换预处理
-                        const processedImageData = simplePreprocess(imageData);
+                        // 1. 首先应用背景转换预处理（简化版，提高速度）
+                        const processedImageData = fastPreprocess(imageData);
                         
-                        // 2. 使用处理后的图像尝试识别二维码，使用标准参数
+                        // 2. 使用处理后的图像尝试识别二维码
                         const code = jsQR(processedImageData.data, processedImageData.width, processedImageData.height, {
                             inversionAttempts: 'both'
                         });
@@ -4010,20 +4019,6 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                             // 移除canvas元素
                             document.body.removeChild(canvas);
                         } else {
-                            // 3. 如果失败，尝试使用原始图像（双重保障）
-                            const code2 = jsQR(imageData.data, imageData.width, imageData.height, {
-                                inversionAttempts: 'both'
-                            });
-                            
-                            if (code2) {
-                                hint.textContent = '扫描成功！';
-                                hint.style.color = '#4caf50';
-                                handleScanResult(code2.data);
-                                // 移除canvas元素
-                                document.body.removeChild(canvas);
-                                return;
-                            }
-                            
                             // 继续扫描
                             requestAnimationFrame(scanFrame);
                         }
@@ -4039,6 +4034,42 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             
             // 开始扫描循环
             requestAnimationFrame(scanFrame);
+        }
+        
+        // 快速预处理函数，提高实时性
+        function fastPreprocess(imageData) {
+            const data = imageData.data;
+            
+            // 1. 颜色反转：将白色二维码黑色背景转换为标准的黑色二维码白色背景
+            for (let i = 0; i < data.length; i += 4) {
+                // 反转RGB值
+                data[i] = 255 - data[i];     // R
+                data[i + 1] = 255 - data[i + 1]; // G
+                data[i + 2] = 255 - data[i + 2]; // B
+            }
+            
+            // 2. 快速二值化处理
+            const threshold = 128;
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                const brightness = (r + g + b) / 3;
+                
+                if (brightness < threshold) {
+                    // 转换为黑色
+                    data[i] = 0;
+                    data[i + 1] = 0;
+                    data[i + 2] = 0;
+                } else {
+                    // 转换为白色
+                    data[i] = 255;
+                    data[i + 1] = 255;
+                    data[i + 2] = 255;
+                }
+            }
+            
+            return imageData;
         }
         
         // 增强的图像预处理，支持背景转换和黑色背景
