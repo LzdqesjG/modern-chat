@@ -81,6 +81,7 @@ if ($resource === 'version' && ($action === 'app' || $action === '')) {
             'version' => '0.7.4',
             'versionCode' => 74,
             'versionName' => '0.7.4',
+            'minVersionCode' => 0,
             'note' => '暂无新版本',
             'downloadUrl' => ''
         ], JSON_UNESCAPED_UNICODE);

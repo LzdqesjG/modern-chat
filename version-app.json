@@ -2,6 +2,7 @@
   "version": "0.7.4",
   "versionCode": 74,
   "versionName": "0.7.4",
+  "minVersionCode": 0,
   "releaseNote": "当前为最新版本。",
   "downloadUrl": "",
   "note": "暂无新版本。若需安装包请从官方渠道获取。"
