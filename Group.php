@@ -301,12 +301,14 @@ class Group {
         $file_name = isset($file_info['file_name']) ? $file_info['file_name'] : null;
         $file_size = isset($file_info['file_size']) ? $file_info['file_size'] : null;
         $file_type = isset($file_info['file_type']) ? $file_info['file_type'] : null;
+        $audio_duration = (int)(isset($file_info['audio_duration']) ? $file_info['audio_duration'] : 0);
+        if ($audio_duration < 0) $audio_duration = 0;
         
         try {
             if ($file_path) {
-                // 发送文件消息，包含file_type字段
-                $stmt = $this->conn->prepare("INSERT INTO group_messages (group_id, sender_id, content, file_path, file_name, file_size, file_type) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                $result = $stmt->execute([$group_id, $sender_id, $content, $file_path, $file_name, $file_size, $file_type]);
+                // 发送文件消息，包含 file_type、audio_duration（语音时长秒）
+                $stmt = $this->conn->prepare("INSERT INTO group_messages (group_id, sender_id, content, file_path, file_name, file_size, file_type, audio_duration) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+                $result = $stmt->execute([$group_id, $sender_id, $content, $file_path, $file_name, $file_size, $file_type, $audio_duration]);
             } else {
                 // 发送文本消息，只使用数据库中实际存在的字段
                 $stmt = $this->conn->prepare("INSERT INTO group_messages (group_id, sender_id, content) VALUES (?, ?, ?)");
@@ -367,7 +369,9 @@ class Group {
                 // 更新未读消息计数
                 $this->updateUnreadMessageCount($group_id, $sender_id, $message_id);
                 
-                return ['success' => true, 'message_id' => $message_id];
+                $ret = ['success' => true, 'message_id' => $message_id];
+                if ($file_path) $ret['audio_duration'] = $audio_duration;
+                return $ret;
             }
         } catch (PDOException $e) {
             error_log("Send group message error: " . $e->getMessage());
@@ -434,6 +438,11 @@ class Group {
             $stmt->execute();
             if (!$stmt->fetch()) {
                 $this->conn->exec("ALTER TABLE group_messages ADD COLUMN file_type VARCHAR(50) NULL");
+            }
+            $stmt = $this->conn->prepare("SHOW COLUMNS FROM group_messages LIKE 'audio_duration'");
+            $stmt->execute();
+            if (!$stmt->fetch()) {
+                $this->conn->exec("ALTER TABLE group_messages ADD COLUMN audio_duration INT UNSIGNED DEFAULT 0");
             }
             
             // 确保messages表有is_deleted列
@@ -518,7 +527,7 @@ class Group {
         // 对于获取新消息，使用id直接比较，确保能获取到所有比last_message_id大的消息
         if ($last_message_id > 0) {
             // 使用id直接比较，确保能获取到所有比last_message_id大的消息
-            $stmt = $this->conn->prepare("SELECT gm.id, gm.group_id, gm.sender_id, gm.content, gm.file_path, gm.file_name, gm.file_size, gm.created_at, 
+            $stmt = $this->conn->prepare("SELECT gm.id, gm.group_id, gm.sender_id, gm.content, gm.file_path, gm.file_name, gm.file_size, gm.file_type, gm.audio_duration, gm.created_at, 
                                          u.username as sender_username, u.avatar 
                                          FROM group_messages gm 
                                          JOIN users u ON gm.sender_id = u.id 
@@ -530,7 +539,7 @@ class Group {
             $messages = $stmt->fetchAll();
         } else {
             // 如果没有last_message_id，返回最新的消息
-            $stmt = $this->conn->prepare("SELECT gm.id, gm.group_id, gm.sender_id, gm.content, gm.file_path, gm.file_name, gm.file_size, gm.created_at, 
+            $stmt = $this->conn->prepare("SELECT gm.id, gm.group_id, gm.sender_id, gm.content, gm.file_path, gm.file_name, gm.file_size, gm.file_type, gm.audio_duration, gm.created_at, 
                                          u.username as sender_username, u.avatar 
                                          FROM group_messages gm 
                                          JOIN users u ON gm.sender_id = u.id 

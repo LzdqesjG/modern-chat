@@ -545,13 +545,14 @@ try {
                     $file_name = $data['file_name'] ?? '';
                     $file_size = $data['file_size'] ?? 0;
                     $file_type = $data['file_type'] ?? '';
+                    $audio_duration = (int)($data['audio_duration'] ?? 0);
                     
                     if (empty($receiver_id)) response_error('接收者ID不能为空');
                     if (empty($file_path)) response_error('文件路径不能为空');
                     
-                    $result = $message->sendFileMessage($current_user_id, $receiver_id, $file_path, $file_name, $file_size, $file_type);
+                    $result = $message->sendFileMessage($current_user_id, $receiver_id, $file_path, $file_name, $file_size, $file_type, $audio_duration);
                     if ($result['success']) {
-                        response_success(['message_id' => $result['message_id']], '文件发送成功');
+                        response_success(['message_id' => $result['message_id'], 'audio_duration' => $result['audio_duration'] ?? $audio_duration], '文件发送成功');
                     } else {
                         response_error('文件发送失败');
                     }
@@ -711,6 +712,7 @@ try {
                     $file_name = $data['file_name'] ?? '';
                     $file_size = $data['file_size'] ?? 0;
                     $file_type = $data['file_type'] ?? '';
+                    $audio_duration = (int)($data['audio_duration'] ?? 0);
                     
                     if (empty($group_id)) response_error('群聊ID不能为空');
                     if (empty($file_path)) response_error('文件路径不能为空');
@@ -719,12 +721,13 @@ try {
                         'file_path' => $file_path,
                         'file_name' => $file_name,
                         'file_size' => $file_size,
-                        'file_type' => $file_type
+                        'file_type' => $file_type,
+                        'audio_duration' => $audio_duration
                     ];
                     
                     $result = $group->sendGroupMessage($group_id, $current_user_id, '', $file_info);
                     if ($result['success']) {
-                        response_success(['message_id' => $result['message_id']], '文件发送成功');
+                        response_success(['message_id' => $result['message_id'], 'audio_duration' => $result['audio_duration'] ?? $audio_duration], '文件发送成功');
                     } else {
                         response_error($result['message'] ?? '文件发送失败');
                     }

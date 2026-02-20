@@ -37,23 +37,26 @@ class Message {
         }
     }
     
-    // 发送文件消息
-    public function sendFileMessage($sender_id, $receiver_id, $file_path, $file_name, $file_size, $file_type = null) {
+    // 发送文件消息（$audio_duration 为语音消息时长，秒，可选）
+    public function sendFileMessage($sender_id, $receiver_id, $file_path, $file_name, $file_size, $file_type = null, $audio_duration = 0) {
         try {
             // 确保必要的表和列存在
             $this->ensureTablesExist();
             
+            $audio_duration = (int) $audio_duration;
+            if ($audio_duration < 0) $audio_duration = 0;
+            
             $stmt = $this->conn->prepare(
-                "INSERT INTO messages (sender_id, receiver_id, file_path, file_name, file_size, file_type, type, status) 
-                 VALUES (?, ?, ?, ?, ?, ?, 'file', 'sent')"
+                "INSERT INTO messages (sender_id, receiver_id, file_path, file_name, file_size, file_type, audio_duration, type, status) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 'file', 'sent')"
             );
-            $stmt->execute([$sender_id, $receiver_id, $file_path, $file_name, $file_size, $file_type]);
+            $stmt->execute([$sender_id, $receiver_id, $file_path, $file_name, $file_size, $file_type, $audio_duration]);
             
             $message_id = $this->conn->lastInsertId();
             $this->updateSession($sender_id, $receiver_id, $message_id);
             $this->updateUnreadMessageCount($receiver_id, $sender_id, $message_id);
             
-            return ['success' => true, 'message_id' => $message_id];
+            return ['success' => true, 'message_id' => $message_id, 'audio_duration' => $audio_duration];
         } catch(PDOException $e) {
             error_log("Send File Message Error: " . $e->getMessage());
             return ['success' => false, 'message' => '文件发送失败'];
@@ -104,6 +107,12 @@ class Message {
             $stmt->execute();
             if (!$stmt->fetch()) {
                 $this->conn->exec("ALTER TABLE messages ADD COLUMN file_type VARCHAR(50) NULL");
+            }
+            // 确保messages表有audio_duration列（语音时长，秒）
+            $stmt = $this->conn->prepare("SHOW COLUMNS FROM messages LIKE 'audio_duration'");
+            $stmt->execute();
+            if (!$stmt->fetch()) {
+                $this->conn->exec("ALTER TABLE messages ADD COLUMN audio_duration INT UNSIGNED DEFAULT 0");
             }
             
             // 确保group_messages表有file_type列
