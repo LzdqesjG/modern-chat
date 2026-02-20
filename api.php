@@ -67,6 +67,27 @@ $request_data = get_request_data();
 $resource = $request_data['resource'] ?? $_GET['resource'] ?? '';
 $action = $request_data['action'] ?? $_GET['action'] ?? '';
 
+// APP 版本信息接口（无需登录，手机端检查更新用）
+if ($resource === 'version' && ($action === 'app' || $action === '')) {
+    $base_dir_for_version = __DIR__;
+    $version_file = $base_dir_for_version . '/version-app.json';
+    if (is_file($version_file)) {
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: public, max-age=60');
+        echo file_get_contents($version_file);
+    } else {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'version' => '0.7.4',
+            'versionCode' => 74,
+            'versionName' => '0.7.4',
+            'note' => '暂无新版本',
+            'downloadUrl' => ''
+        ], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
 // 如果没有 resource 参数，返回 API 状态信息
 if (empty($resource)) {
     echo json_encode([
