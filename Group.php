@@ -1,7 +1,6 @@
 <?php
 require_once 'db.php';
 require_once 'User.php';
-require_once 'Friend.php';
 
 class Group {
     private $conn;
@@ -542,16 +541,15 @@ class Group {
             $stmt->execute([$group_id, $last_message_id, $user_id, $limit]);
             $messages = $stmt->fetchAll();
         } else {
-            // 如果没有last_message_id，返回最新的消息
+            // 如果没有last_message_id，返回所有消息（不限制数量）
             $stmt = $this->conn->prepare("SELECT gm.id, gm.group_id, gm.sender_id, gm.content, gm.file_path, gm.file_name, gm.file_size, gm.file_type, gm.audio_duration, gm.created_at, 
                                          u.username as sender_username, u.avatar 
                                          FROM group_messages gm 
                                          JOIN users u ON gm.sender_id = u.id 
                                          WHERE gm.group_id = ? 
                                          AND (gm.is_deleted = 0 OR gm.sender_id != ?)
-                                         ORDER BY gm.created_at ASC 
-                                         LIMIT ?");
-            $stmt->execute([$group_id, $user_id, $limit]);
+                                         ORDER BY gm.created_at ASC");
+            $stmt->execute([$group_id, $user_id]);
             $messages = $stmt->fetchAll();
         }
         
@@ -914,25 +912,19 @@ class Group {
             if (!$this->isUserInGroup($group_id, $inviter_id)) {
                 return false;
             }
-
+            
             // 检查被邀请者是否已经是群成员
             if ($this->isUserInGroup($group_id, $invitee_id)) {
                 return false;
             }
-
-            // 检查是否是好友关系
-            $friend = new Friend($this->conn);
-            if (!$friend->isFriend($inviter_id, $invitee_id)) {
-                return false;
-            }
-
+            
             // 检查是否已经发送过邀请
             $stmt = $this->conn->prepare("SELECT id FROM group_invitations WHERE group_id = ? AND inviter_id = ? AND invitee_id = ? AND status = 'pending'");
             $stmt->execute([$group_id, $inviter_id, $invitee_id]);
             if ($stmt->fetch()) {
                 return false;
             }
-
+            
             // 发送邀请
             $stmt = $this->conn->prepare("INSERT INTO group_invitations (group_id, inviter_id, invitee_id) VALUES (?, ?, ?)");
             return $stmt->execute([$group_id, $inviter_id, $invitee_id]);
@@ -951,7 +943,7 @@ class Group {
         $stmt = $this->conn->prepare("SELECT gi.*, g.name as group_name, u.username as inviter_name, u.avatar as inviter_avatar FROM group_invitations gi
                                      JOIN groups g ON gi.group_id = g.id
                                      JOIN users u ON gi.inviter_id = u.id
-                                     WHERE gi.invitee_id = ? AND gi.status = 'pending'
+                                     WHERE gi.invitee_id = ?
                                      ORDER BY gi.created_at DESC");
         $stmt->execute([$user_id]);
         return $stmt->fetchAll();

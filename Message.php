@@ -37,20 +37,23 @@ class Message {
         }
     }
     
-    // 发送文件消息（$audio_duration 为语音消息时长，秒，可选）
-    public function sendFileMessage($sender_id, $receiver_id, $file_path, $file_name, $file_size, $file_type = null, $audio_duration = 0) {
+    // 发送文件消息（$audio_duration 语音时长秒，$video_duration 视频时长秒，$video_cover 视频封面路径，均可选）
+    public function sendFileMessage($sender_id, $receiver_id, $file_path, $file_name, $file_size, $file_type = null, $audio_duration = 0, $video_duration = 0, $video_cover = null) {
         try {
             // 确保必要的表和列存在
             $this->ensureTablesExist();
             
             $audio_duration = (int) $audio_duration;
             if ($audio_duration < 0) $audio_duration = 0;
+            $video_duration = (int) $video_duration;
+            if ($video_duration < 0) $video_duration = 0;
+            $video_cover = $video_cover !== null && $video_cover !== '' ? (string) $video_cover : null;
             
             $stmt = $this->conn->prepare(
-                "INSERT INTO messages (sender_id, receiver_id, file_path, file_name, file_size, file_type, audio_duration, type, status) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 'file', 'sent')"
+                "INSERT INTO messages (sender_id, receiver_id, file_path, file_name, file_size, file_type, audio_duration, video_duration, video_cover, type, status) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'file', 'sent')"
             );
-            $stmt->execute([$sender_id, $receiver_id, $file_path, $file_name, $file_size, $file_type, $audio_duration]);
+            $stmt->execute([$sender_id, $receiver_id, $file_path, $file_name, $file_size, $file_type, $audio_duration, $video_duration, $video_cover]);
             
             $message_id = $this->conn->lastInsertId();
             $this->updateSession($sender_id, $receiver_id, $message_id);
@@ -114,6 +117,17 @@ class Message {
             if (!$stmt->fetch()) {
                 $this->conn->exec("ALTER TABLE messages ADD COLUMN audio_duration INT UNSIGNED DEFAULT 0");
             }
+            // 确保messages表有video_duration、video_cover列（视频时长秒、视频封面路径）
+            $stmt = $this->conn->prepare("SHOW COLUMNS FROM messages LIKE 'video_duration'");
+            $stmt->execute();
+            if (!$stmt->fetch()) {
+                $this->conn->exec("ALTER TABLE messages ADD COLUMN video_duration INT UNSIGNED DEFAULT 0");
+            }
+            $stmt = $this->conn->prepare("SHOW COLUMNS FROM messages LIKE 'video_cover'");
+            $stmt->execute();
+            if (!$stmt->fetch()) {
+                $this->conn->exec("ALTER TABLE messages ADD COLUMN video_cover VARCHAR(512) NULL");
+            }
             
             // 确保group_messages表有file_type列
             $stmt = $this->conn->prepare("SHOW COLUMNS FROM group_messages LIKE 'file_type'");
@@ -155,7 +169,7 @@ class Message {
     }
     
     // 获取聊天记录
-    public function getChatHistory($user1_id, $user2_id, $limit = 50, $offset = 0) {
+    public function getChatHistory($user1_id, $user2_id, $limit = 5000, $offset = 0) {
         try {
             // 确保必要的表和列存在
             $this->ensureTablesExist();
