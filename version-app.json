@@ -1,7 +1,7 @@
 {
-  "version": "0.7.5",
-  "versionCode": 75,
-  "versionName": "0.7.5",
+  "version": "0.7.6",
+  "versionCode": 76,
+  "versionName": "0.7.6",
   "minVersionCode": 0,
   "releaseNote": "V0.7.5 更新内容：\n- HTML 标签过滤，防止 XSS 攻击\n- 请求频率优化，减少 CDN 拦截\n- 本地缓存功能，用户可自由开关\n- 安全漏洞修复，移除敏感字段\n- 消息发送者显示修复",
   "downloadUrl": "https://modernchatapp.webd.cc.cd/app/__UNI__08F311F_0221131345.apk",

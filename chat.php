@@ -8395,6 +8395,22 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                                         <button onclick="rejectGroupInvitation(${request.id})" style="padding: 6px 12px; background: #f44336; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">拒绝</button>
                                     </div>
                                 </div>`;
+                            } else if (request.type === 'join_request') {
+                                // 入群申请（别人申请加入我管理的群聊）
+                                const userAvatar = request.avatar ? `<img src="${request.avatar}" alt="${request.username}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;" onerror="this.style.display='none'; this.parentElement.innerHTML='${request.username.substring(0, 2)}'">` : `<div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #0095ff 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 14px;">${request.username.substring(0, 2)}</div>`;
+                                
+                                html += `<div style="display: flex; align-items: center; padding: 12px; border-bottom: 1px solid #f0f0f0;">
+                                    <div style="margin-right: 12px;">${userAvatar}</div>
+                                    <div style="flex: 1;">
+                                        <div style="font-weight: 600; margin-bottom: 2px;">${request.username}</div>
+                                        <div style="font-size: 12px; color: #666;">申请加入群聊 ${request.group_name}</div>
+                                        <div style="font-size: 11px; color: #999; margin-top: 2px;">${formattedTime}</div>
+                                    </div>
+                                    <div style="display: flex; gap: 8px;">
+                                        <button onclick="approveJoinRequest(${request.id}, ${request.group_id})" style="padding: 6px 12px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">接受</button>
+                                        <button onclick="rejectJoinRequest(${request.id}, ${request.group_id})" style="padding: 6px 12px; background: #f44336; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">拒绝</button>
+                                    </div>
+                                </div>`;
                             }
                         });
                     } else {
@@ -15662,11 +15678,20 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                     },
                     body: JSON.stringify({ request_id: requestId, group_id: groupId })
                 });
-                
+
                 const data = await response.json();
                 if (data.success) {
-                    // 重新加载申请列表
-                    loadJoinRequests(groupId);
+                    // 检查哪个弹窗是可见的，刷新对应的列表
+                    const joinRequestsModal = document.getElementById('join-requests-modal');
+                    const addFriendModal = document.getElementById('add-friend-modal');
+                    
+                    if (joinRequestsModal && joinRequestsModal.style.display !== 'none') {
+                        // 入群申请弹窗可见，刷新入群申请列表
+                        loadJoinRequests(groupId);
+                    } else if (addFriendModal && addFriendModal.style.display !== 'none') {
+                        // 添加好友弹窗可见，刷新好友申请列表
+                        loadFriendRequests();
+                    }
                     // 显示成功通知
                     showNotification('已批准入群申请', 'success');
                 } else {
@@ -15677,7 +15702,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 showNotification('网络错误，请重试', 'error');
             }
         }
-        
+
         // 拒绝入群申请
         async function rejectJoinRequest(requestId, groupId) {
             try {
@@ -15688,11 +15713,20 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                     },
                     body: JSON.stringify({ request_id: requestId, group_id: groupId })
                 });
-                
+
                 const data = await response.json();
                 if (data.success) {
-                    // 重新加载申请列表
-                    loadJoinRequests(groupId);
+                    // 检查哪个弹窗是可见的，刷新对应的列表
+                    const joinRequestsModal = document.getElementById('join-requests-modal');
+                    const addFriendModal = document.getElementById('add-friend-modal');
+                    
+                    if (joinRequestsModal && joinRequestsModal.style.display !== 'none') {
+                        // 入群申请弹窗可见，刷新入群申请列表
+                        loadJoinRequests(groupId);
+                    } else if (addFriendModal && addFriendModal.style.display !== 'none') {
+                        // 添加好友弹窗可见，刷新好友申请列表
+                        loadFriendRequests();
+                    }
                     // 显示成功通知
                     showNotification('已拒绝入群申请', 'success');
                 } else {

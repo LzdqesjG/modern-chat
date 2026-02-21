@@ -46,8 +46,26 @@ foreach ($group_invitations as &$invitation) {
     $invitation['type'] = 'group';
 }
 
+// 获取我管理的群聊的入群申请
+$join_requests_for_admin = [];
+$user_groups = $group->getUserGroups($user_id);
+foreach ($user_groups as $user_group) {
+    // 检查用户是否是群主或管理员
+    $is_admin_or_owner = ($user_group['owner_id'] == $user_id) || $user_group['is_admin'];
+    if ($is_admin_or_owner && $user_group['all_user_group'] != 1) {
+        // 获取该群聊的入群申请
+        $join_requests = $group->getJoinRequests($user_group['id']);
+        foreach ($join_requests as &$join_request) {
+            $join_request['type'] = 'join_request';
+            $join_request['group_id'] = $user_group['id'];
+            $join_request['group_name'] = $user_group['name'];
+        }
+        $join_requests_for_admin = array_merge($join_requests_for_admin, $join_requests);
+    }
+}
+
 // 合并所有请求
-$all_requests = array_merge($friend_requests, $group_invitations);
+$all_requests = array_merge($friend_requests, $group_invitations, $join_requests_for_admin);
 
 // 按创建时间排序
 usort($all_requests, function($a, $b) {

@@ -1,6 +1,7 @@
 <?php
 require_once 'db.php';
 require_once 'User.php';
+require_once 'Friend.php';
 
 class Group {
     private $conn;
@@ -913,19 +914,25 @@ class Group {
             if (!$this->isUserInGroup($group_id, $inviter_id)) {
                 return false;
             }
-            
+
             // 检查被邀请者是否已经是群成员
             if ($this->isUserInGroup($group_id, $invitee_id)) {
                 return false;
             }
-            
+
+            // 检查是否是好友关系
+            $friend = new Friend($this->conn);
+            if (!$friend->isFriend($inviter_id, $invitee_id)) {
+                return false;
+            }
+
             // 检查是否已经发送过邀请
             $stmt = $this->conn->prepare("SELECT id FROM group_invitations WHERE group_id = ? AND inviter_id = ? AND invitee_id = ? AND status = 'pending'");
             $stmt->execute([$group_id, $inviter_id, $invitee_id]);
             if ($stmt->fetch()) {
                 return false;
             }
-            
+
             // 发送邀请
             $stmt = $this->conn->prepare("INSERT INTO group_invitations (group_id, inviter_id, invitee_id) VALUES (?, ?, ?)");
             return $stmt->execute([$group_id, $inviter_id, $invitee_id]);
