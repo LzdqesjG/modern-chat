@@ -297,6 +297,10 @@ try {
                         
                         // 移除敏感信息
                         unset($result['user']['password']);
+                        unset($result['user']['security_question']);
+                        unset($result['user']['security_answer']);
+                        unset($result['user']['reset_token']);
+                        unset($result['user']['reset_token_expires']);
                         
                         // 更新状态为在线
                         $user->updateStatus($result['user']['id'], 'online');
@@ -371,7 +375,12 @@ try {
                     $user_info = $user->getUserById($target_user_id);
                     
                     if ($user_info) {
+                        // 移除敏感信息
                         unset($user_info['password']);
+                        unset($user_info['security_question']);
+                        unset($user_info['security_answer']);
+                        unset($user_info['reset_token']);
+                        unset($user_info['reset_token_expires']);
                         response_success($user_info);
                     } else {
                         response_error('用户不存在', 404);

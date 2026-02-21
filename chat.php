@@ -8571,7 +8571,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                             </div>
                             
                             <!-- 美化的选择按钮 -->
-                            <div style="flex-shrink: 0;">
+                            <div style="flex-shrink: 0;" onclick="event.stopPropagation();">
                                 <label class="custom-checkbox" style="
                                     position: relative;
                                     display: inline-block;
@@ -8583,7 +8583,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                                         opacity: 0;
                                         width: 0;
                                         height: 0;
-                                    " onchange="updateFriendItemStyle(${friend.id})">
+                                    " onchange="updateFriendItemStyle(${friend.id})" onclick="event.stopPropagation();">
                                     <span style="
                                         position: absolute;
                                         top: 0;
@@ -8799,6 +8799,12 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             document.querySelectorAll('#select-friends-container input[type="checkbox"]:checked').forEach(checkbox => {
                 selectedFriends.push(parseInt(checkbox.value));
             });
+            
+            // 验证至少选择了一个好友
+            if (selectedFriends.length === 0) {
+                showNotification('请至少选择一个好友', 'error');
+                return;
+            }
             
             // 发送请求创建群聊
             fetch('create_group.php', {

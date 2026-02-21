@@ -43,8 +43,10 @@ try {
     $user = new User($conn);
     $group = new Group($conn);
 
-    // 获取用户的好友列表
-    $stmt = $conn->prepare("SELECT u.* FROM users u
+    // 获取用户的好友列表（只选择非敏感字段）
+    $stmt = $conn->prepare("SELECT u.id, u.username, u.email, u.avatar, u.status, u.last_active, 
+                                  u.is_admin, u.created_at, u.phone
+                         FROM users u
                          JOIN friends f ON u.id = f.friend_id
                          WHERE f.user_id = ? AND f.status = 'accepted' AND u.id != ?");
     $stmt->execute([$user_id, $user_id]);
