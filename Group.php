@@ -951,7 +951,7 @@ class Group {
         $stmt = $this->conn->prepare("SELECT gi.*, g.name as group_name, u.username as inviter_name, u.avatar as inviter_avatar FROM group_invitations gi
                                      JOIN groups g ON gi.group_id = g.id
                                      JOIN users u ON gi.inviter_id = u.id
-                                     WHERE gi.invitee_id = ?
+                                     WHERE gi.invitee_id = ? AND gi.status = 'pending'
                                      ORDER BY gi.created_at DESC");
         $stmt->execute([$user_id]);
         return $stmt->fetchAll();
