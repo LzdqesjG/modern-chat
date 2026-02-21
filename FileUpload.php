@@ -10,7 +10,8 @@ class FileUpload {
     
     public function __construct($db) {
         $this->conn = $db;
-        $this->uploadDir = UPLOAD_DIR;
+        // 使用绝对路径，确保文件能正确保存
+        $this->uploadDir = __DIR__ . '/' . UPLOAD_DIR;
         $this->maxFileSize = MAX_FILE_SIZE;
         $this->allowedTypes = ALLOWED_FILE_TYPES;
         
@@ -104,9 +105,12 @@ class FileUpload {
             );
             $stmt->execute([$user_id, $original_name, $stored_name, $file_path, $file['size'], $mime_type]);
             
+            // 返回相对路径，方便客户端访问
+            $relative_path = 'uploads/' . $stored_name;
+            
             return [
                 'success' => true,
-                'file_path' => $file_path,
+                'file_path' => $relative_path,
                 'file_name' => $original_name,
                 'file_size' => $file['size'],
                 'mime_type' => $mime_type,
