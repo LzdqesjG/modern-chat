@@ -48,6 +48,13 @@ try {
     // 创建Group实例
     $group = new Group($conn);
 
+    // 验证用户是否是群成员
+    $is_member = $group->isUserInGroup($group_id, $user_id);
+    if (!$is_member) {
+        echo json_encode(['success' => false, 'message' => '您不是该群聊的成员，无权查看群消息']);
+        exit;
+    }
+
     // 获取新消息
     $messages = $group->getGroupMessages($group_id, $user_id, $last_message_id);
     

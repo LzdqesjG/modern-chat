@@ -48,6 +48,14 @@ try {
     // 创建Message实例
     $message = new Message($conn);
 
+    // 验证用户是否有权限访问这些消息
+    // 检查是否是好友关系
+    $friend = new Friend($conn);
+    if (!$friend->isFriend($user_id, $friend_id)) {
+        echo json_encode(['success' => false, 'message' => '您不是该用户的好友，无权查看消息']);
+        exit;
+    }
+
     // 获取新消息
     $stmt = $conn->prepare(
         "SELECT m.*, u.username as sender_username, u.avatar 
