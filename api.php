@@ -104,6 +104,7 @@ if (empty($resource)) {
             'groups' => ['list', 'info', 'create', 'members', 'add_members', 'messages', 'send_message', 'send_file', 'recall', 'leave', 'remove_member', 'set_admin', 'transfer', 'mark_read', 'update_name', 'delete', 'invite', 'delete_message', 'pin', 'unpin'],
             'sessions' => ['list', 'clear_unread', 'pin', 'unpin'],
             'upload' => ['file'],
+            'file' => ['get'],
             'avatar' => ['upload'],
             'announcements' => ['get', 'mark_read'],
             'scan_login' => ['confirm', 'status', 'generate', 'update_status', 'get_ip'],
@@ -986,6 +987,40 @@ try {
                 default:
                     response_error("Groups 模块不支持操作: $action");
             }
+            break;
+
+        // ------------------------------------------
+        // 文件访问代理 (File - 用于图片/封面等，走 API 域名避免小程序域名限制)
+        // ------------------------------------------
+        case 'file':
+            if ($action === 'get') {
+                $path = trim($data['path'] ?? $_GET['path'] ?? '');
+                if (empty($path)) {
+                    response_error('缺少 path 参数', 400);
+                }
+                $path = str_replace('\\', '/', $path);
+                if (strpos($path, '..') !== false || !preg_match('#^uploads/#', $path)) {
+                    response_error('无效的路径', 400);
+                }
+                $full_path = $base_dir . '/' . $path;
+                if (!file_exists($full_path) || !is_file($full_path)) {
+                    http_response_code(404);
+                    exit;
+                }
+                $mimes = [
+                    'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png',
+                    'gif' => 'image/gif', 'webp' => 'image/webp', 'svg' => 'image/svg+xml',
+                    'mp4' => 'video/mp4', 'webm' => 'video/webm', 'ogg' => 'video/ogg',
+                    'mp3' => 'audio/mpeg', 'wav' => 'audio/wav', 'pdf' => 'application/pdf'
+                ];
+                $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+                $ctype = $mimes[$ext] ?? 'application/octet-stream';
+                header('Content-Type: ' . $ctype);
+                header('Cache-Control: public, max-age=86400');
+                readfile($full_path);
+                exit;
+            }
+            response_error("File 模块不支持操作: $action", 404);
             break;
 
         // ------------------------------------------
