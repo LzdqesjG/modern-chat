@@ -1,0 +1,584 @@
+/* Modern Chat Video Player Styles */
+
+/* 主题变量定义 */
+:root {
+    /* 浅色模式变量 */
+    --primary-bg: #ffffff;
+    --secondary-bg: #f5f5f5;
+    --text-primary: #333333;
+    --text-secondary: #666666;
+    --border-color: #e0e0e0;
+    --shadow-color: rgba(0, 0, 0, 0.1);
+    --overlay-bg: rgba(0, 0, 0, 0.5);
+    --button-bg: rgba(255, 255, 255, 0.2);
+    --button-hover-bg: rgba(255, 255, 255, 0.3);
+    --modal-bg: white;
+    --modal-text: #333333;
+    --modal-border: #eee;
+    --slider-bg: #ddd;
+    --slider-thumb: #667eea;
+}
+
+/* 深色模式变量 */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --primary-bg: #1a1a1a;
+        --secondary-bg: #2d2d2d;
+        --text-primary: #e0e0e0;
+        --text-secondary: #b0b0b0;
+        --border-color: #404040;
+        --shadow-color: rgba(0, 0, 0, 0.3);
+        --overlay-bg: rgba(0, 0, 0, 0.7);
+        --button-bg: rgba(255, 255, 255, 0.1);
+        --button-hover-bg: rgba(255, 255, 255, 0.2);
+        --modal-bg: #2d2d2d;
+        --modal-text: #e0e0e0;
+        --modal-border: #404040;
+        --slider-bg: #555;
+        --slider-thumb: #8a9bff;
+    }
+}
+
+/* 播放器容器 */
+.modern-chat-video-player {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    max-width: 1000px;
+    max-height: 800px;
+    margin: 0 auto;
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px var(--shadow-color);
+    cursor: pointer;
+}
+
+/* 视频包装器 */
+.modern-chat-video-wrapper {
+    position: relative;
+    display: inline-block;
+    width: 100%;
+}
+
+/* 播放按钮覆盖层 */
+.modern-chat-video-play-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--overlay-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0.8;
+    transition: opacity 0.3s ease;
+    border-radius: 8px;
+    z-index: 10;
+}
+
+.modern-chat-video-play-overlay:hover {
+    opacity: 1;
+}
+
+/* 播放按钮 */
+.modern-chat-video-play-overlay > div {
+    width: 80px;
+    height: 80px;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 40px;
+    color: white;
+    opacity: 0.9;
+    transition: transform 0.3s ease;
+}
+
+.modern-chat-video-play-overlay:hover > div {
+    transform: scale(1.1);
+}
+
+/* 未初始化的视频元素 */
+video[data-modern-player] {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+    background: black;
+    cursor: pointer;
+    border-radius: 8px;
+}
+
+/* 视频元素 */
+.modern-chat-video-player video {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: contain;
+    position: relative;
+    z-index: 1;
+}
+
+/* 播放器控件 */
+.modern-chat-video-controls {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.9));
+    color: white;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    opacity: 1;
+    transition: opacity 0.3s ease;
+    min-height: 120px;
+    z-index: 1000;
+}
+
+/* 鼠标悬停时显示控件 */
+.modern-chat-video-player:hover .modern-chat-video-controls {
+    opacity: 1;
+}
+
+/* 主控制按钮组 */
+.modern-chat-video-main-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+/* 控制按钮 */
+.modern-chat-video-btn {
+    background: var(--button-bg);
+    border: none;
+    color: white;
+    cursor: pointer;
+    font-size: 20px;
+    padding: 12px;
+    border-radius: 50%;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.modern-chat-video-btn:hover {
+    background: var(--button-hover-bg);
+    transform: scale(1.1);
+}
+
+/* 播放/暂停按钮 */
+.modern-chat-video-play-btn {
+    font-size: 22px;
+}
+
+/* 音量控制 */
+.modern-chat-video-volume {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.modern-chat-video-volume-slider {
+    width: 100px;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 3px;
+    cursor: pointer;
+    position: relative;
+}
+
+.modern-chat-video-volume-level {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background: white;
+    border-radius: 3px;
+    width: 100%;
+}
+
+/* 进度条样式 */
+.modern-chat-video-progress-container {
+    width: 100%;
+    margin-bottom: 15px;
+    position: relative;
+    z-index: 1001;
+}
+
+.modern-chat-video-progress-bar {
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    position: relative;
+    z-index: 1002;
+}
+
+.modern-chat-video-progress-fill {
+    height: 100%;
+    background: white;
+    border-radius: 4px;
+    width: 0%;
+    transition: width 0.1s ease;
+    position: relative;
+    z-index: 1003;
+}
+
+/* 右键菜单样式 */
+.modern-chat-video-context-menu {
+    position: fixed;
+    background: var(--primary-bg);
+    color: var(--text-primary);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px var(--shadow-color);
+    padding: 8px 0;
+    z-index: 999999999 !important;
+    min-width: 150px;
+    display: none;
+    border: 1px solid var(--border-color);
+}
+
+.modern-chat-video-context-menu.visible {
+    display: block;
+}
+
+.modern-chat-video-context-menu-item {
+    padding: 10px 16px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    font-size: 14px;
+}
+
+.modern-chat-video-context-menu-item:hover {
+    background-color: var(--secondary-bg);
+}
+
+/* 控制按钮行 */
+.modern-chat-video-controls-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+}
+
+/* 左侧控制按钮组（播放/暂停和音量控制） */
+.modern-chat-video-left-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+/* 中间时间显示 */
+.modern-chat-video-center-controls {
+    display: flex;
+    align-items: center;
+}
+
+/* 右侧控制按钮组（下载和全屏） */
+.modern-chat-video-right-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+/* 下载按钮 */
+.modern-chat-video-download-btn {
+    font-size: 18px;
+}
+
+/* 全屏按钮 */
+.modern-chat-video-fullscreen-btn {
+    font-size: 18px;
+}
+
+/* 时间显示 */
+.modern-chat-video-time {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.8);
+    margin-left: 15px;
+}
+
+
+.modern-chat-video-context-menu.visible {
+    display: block;
+}
+
+.modern-chat-video-context-menu-item {
+    padding: 10px 15px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s ease;
+    color: var(--text-primary);
+}
+
+.modern-chat-video-context-menu-item:hover {
+    background-color: var(--secondary-bg);
+}
+
+/* 模态框 */
+.modern-chat-video-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--overlay-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 999999999 !important;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.modern-chat-video-modal.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+.modern-chat-video-modal-content {
+    background: var(--modal-bg);
+    border-radius: 12px;
+    padding: 20px;
+    max-width: 500px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    border: 1px solid var(--modal-border);
+    box-shadow: 0 4px 20px var(--shadow-color);
+}
+
+.modern-chat-video-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--modal-border);
+}
+
+.modern-chat-video-modal-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--modal-text);
+}
+
+.modern-chat-video-modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: color 0.2s ease;
+}
+
+.modern-chat-video-modal-close:hover {
+    color: var(--text-primary);
+}
+
+/* 视频统计信息 */
+.modern-chat-video-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.modern-chat-video-stats-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.modern-chat-video-stats-label {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.modern-chat-video-stats-value {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+/* 视频色彩调整 */
+.modern-chat-video-color-adjust {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.modern-chat-video-color-control {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.modern-chat-video-color-label {
+    font-size: 14px;
+    color: var(--text-secondary);
+    display: flex;
+    justify-content: space-between;
+}
+
+.modern-chat-video-color-slider {
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--slider-bg);
+    outline: none;
+    -webkit-appearance: none;
+}
+
+.modern-chat-video-color-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--slider-thumb);
+    cursor: pointer;
+}
+
+.modern-chat-video-color-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--slider-thumb);
+    cursor: pointer;
+    border: none;
+}
+
+/* 视频音效调节 */
+.modern-chat-video-audio-adjust {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.modern-chat-video-audio-control {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.modern-chat-video-audio-label {
+    font-size: 14px;
+    color: var(--text-secondary);
+    display: flex;
+    justify-content: space-between;
+}
+
+.modern-chat-video-audio-slider {
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--slider-bg);
+    outline: none;
+    -webkit-appearance: none;
+}
+
+.modern-chat-video-audio-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--slider-thumb);
+    cursor: pointer;
+}
+
+.modern-chat-video-audio-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--slider-thumb);
+    cursor: pointer;
+    border: none;
+}
+
+/* 全屏模式 */
+.modern-chat-video-player:fullscreen {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    border-radius: 0;
+}
+
+.modern-chat-video-player:fullscreen .modern-chat-video-controls {
+    opacity: 1;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .modern-chat-video-controls {
+        padding: 10px;
+    }
+    
+    .modern-chat-video-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 16px;
+        padding: 8px;
+    }
+    
+    .modern-chat-video-volume-slider {
+        width: 80px;
+    }
+    
+    .modern-chat-video-time {
+        font-size: 12px;
+    }
+}
+
+/* 加载动画 */
+.modern-chat-video-loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-top: 3px solid white;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: translate(-50%, -50%) rotate(0deg); }
+    100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* 错误提示 */
+.modern-chat-video-error {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 14px;
+    text-align: center;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 8px;
+}
+
+/* 视频元素样式 */
+.modern-chat-video-player video {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+    background: black;
+}

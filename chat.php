@@ -118,6 +118,13 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
+// 生成并存储退出登录token
+if (!isset($_SESSION['logout_token'])) {
+    $user = new User($conn);
+    $logout_token = $user->generateLogoutToken($_SESSION['user_id']);
+    $_SESSION['logout_token'] = $logout_token;
+}
+
 // 调用函数创建数据表
 createGroupTables();
 
@@ -409,6 +416,8 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>主页 - Modern Chat</title>
     <link rel="icon" href="aconvert.ico" type="image/x-icon">
+    <link rel="stylesheet" href="Modern-chat-video-player.css">
+    <script src="Modern-chat-video-player.js"></script>
     <style>
         :root {
             /* 浅色模式变量 */
@@ -1400,16 +1409,20 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
         
         /* 视频播放器样式 */
         .video-container {
-            max-width: 300px;
+            max-width: 100%;
+            max-height: 400px;
             border-radius: 8px;
             overflow: hidden;
             background: #000;
+            margin: 0 auto;
         }
         
         .video-element {
             width: 100%;
             height: auto;
             cursor: pointer;
+            max-height: 400px;
+            object-fit: contain;
         }
 
         /* 视频播放弹窗样式 */
@@ -1421,7 +1434,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             width: 100%;
             height: 100%;
             background: rgba(0, 0, 0, 0.9);
-            z-index: 4000;
+            z-index: 15000;
             flex-direction: column;
             align-items: center;
             justify-content: center;
@@ -1436,7 +1449,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             border-radius: 12px;
             width: 90%;
             max-width: 1000px;
-            max-height: 80vh;
+            max-height: 90vh;
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -1481,8 +1494,9 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             flex: 1;
             display: flex;
             flex-direction: column;
-            padding: 20px;
+            padding: 0;
             background: #000;
+            min-height: 600px;
         }
 
         .video-player-iframe {
@@ -1511,10 +1525,12 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
         .video-controls {
             background: rgba(0, 0, 0, 0.8);
             color: white;
-            padding: 15px;
+            padding: 20px;
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 15px;
+            position: relative;
+            z-index: 10000;
         }
 
         .video-progress-container {
@@ -1572,6 +1588,8 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             align-items: center;
             justify-content: center;
             transition: background 0.2s ease;
+            position: relative;
+            z-index: 11000;
         }
 
         .video-control-btn:hover {
@@ -1671,16 +1689,20 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             display: flex;
             align-items: center;
             gap: 10px;
+            position: relative;
+            z-index: 11000;
         }
 
         .volume-slider {
             width: 100px;
             cursor: pointer;
+            position: relative;
+            z-index: 11000;
         }
 
         /* 修复下载按钮被覆盖问题 */
         .download-control-btn {
-            z-index: 2000;
+            z-index: 11000;
             position: relative;
         }
 
@@ -3502,7 +3524,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                     </div>
                     
                     <!-- 视频元素，隐藏默认controls -->
-                    <video id="custom-video-element" class="custom-video-element" controlsList="nodownload"></video>
+                    <video id="custom-video-element" class="custom-video-element" controlsList="nodownload" data-modern-player></video>
                     
                     <!-- 视频控件 -->
                     <div class="video-controls">
@@ -3975,9 +3997,10 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                                         } elseif (in_array($ext, $video_exts)) {
                                             // 视频类型
                                             echo "<div class='message-media'>";
-                                            echo "<div class='video-container' style='position: relative;'>";
-                                            echo "<video src='".htmlspecialchars($file_path)."' class='video-element' data-file-name='".htmlspecialchars($file_name)."' data-file-type='video' data-file-path='".htmlspecialchars($file_path)."' controlsList='nodownload' onerror=\"if(this.parentElement){this.parentElement.style.display='none'; this.parentElement.insertAdjacentHTML('afterend', '<div class=&quot;file-cleaned-tip&quot;>文件已被清理</div>');}\">";
+                                            echo "<div class='video-container' style='position: relative; width: 100%; max-width: 300px; height: 200px; background: #000; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden;'>";
+                                            echo "<video src='".htmlspecialchars($file_path)."' class='video-element' data-file-name='".htmlspecialchars($file_name)."' data-file-type='video' data-file-path='".htmlspecialchars($file_path)."' controlsList='nodownload' data-modern-player style='display: none;' onerror=\"if(this.parentElement){this.parentElement.style.display='none'; this.parentElement.insertAdjacentHTML('afterend', '<div class=&quot;file-cleaned-tip&quot;>文件已被清理</div>');}\">";
                                             echo "</video>";
+
                                             echo "</div>";
                                             echo "</div>";
                                         } elseif (isset($msg['type']) && $msg['type'] == 'file') {
@@ -4095,8 +4118,9 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                                             // 视频类型
                                             echo "<div class='message-media'>";
                                             echo "<div class='video-container'>";
-                                            echo "<video src='{$file_path}' class='video-element' data-file-name='{$file_name}' data-file-type='video' data-file-path='{$file_path}' controlsList='nodownload'>";
+                                            echo "<video src='{$file_path}' class='video-element' data-file-name='{$file_name}' data-file-type='video' data-file-path='{$file_path}' controlsList='nodownload' data-modern-player style='display: none;'>";
                                             echo "</video>";
+
                                             echo "</div>";
                                             echo "</div>";
                                         } elseif (isset($msg['type']) && $msg['type'] == 'file') {
@@ -4899,10 +4923,17 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
         // 退出登录函数
         function logout() {
             if (confirm('确定要退出登录吗？')) {
+                // 获取logout token
+                const logoutToken = '<?php echo $_SESSION['logout_token']; ?>';
+                
                 // 发送退出登录请求到服务器
                 fetch('logout.php', {
                     method: 'POST',
-                    credentials: 'include'
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ token: logoutToken })
                 })
                 .then(response => response.json())
                 .then(data => {
@@ -7126,6 +7157,11 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                                         
                                         // 更新消息中所有媒体元素的file_path
                                         // 注意：createMessageElement已经使用了messageData中的file_path (fileId)
+                                        
+                                        // 发送完成文件后立即刷新页面
+                                        setTimeout(() => {
+                                            window.location.reload();
+                                        }, 500);
                                     } else {
                                         showNotification('消息发送失败: ' + (data.message || '未知错误'), 'error');
                                         // 显示失败状态
@@ -7419,7 +7455,7 @@ function sendMessage() {
                 // 处理点歌命令
                 if (chatType === 'group') {
                     // 检查当前群聊是否为点歌群聊
-                    fetch('check_music_group.php', {
+                    fetch('/check_music_group.php', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
@@ -12630,7 +12666,7 @@ function sendMessage() {
                     // 视频类型
                     contentHtml = `<div class='message-media' style='position: relative;'>
                         <div class='video-container' style='position: relative;'>
-                            <video src='' class='video-element' data-file-name='${safeFileNameAttr}' data-file-type='video' data-file-path='${safeFilePathAttr}' data-file-url='${fileUrl}' controlsList='nodownload' playsinline onerror="this.parentElement.style.display='none'; this.parentElement.insertAdjacentHTML('afterend', '<div class=&quot;file-cleaned-tip&quot;>文件已被清理</div>');">
+                            <video src='' class='video-element' data-file-name='${safeFileNameAttr}' data-file-type='video' data-file-path='${safeFilePathAttr}' data-file-url='${fileUrl}' controlsList='nodownload' playsinline data-modern-player onerror="this.parentElement.style.display='none'; this.parentElement.insertAdjacentHTML('afterend', '<div class=&quot;file-cleaned-tip&quot;>文件已被清理</div>');">
                             </video>
                             <!-- 视频操作按钮 - 默认隐藏，hover时显示 -->
                             <div class='media-actions' style='position: absolute; top: 10px; right: 10px; display: flex; gap: 5px; opacity: 0; transition: opacity 0.2s ease; z-index: 3000;'>
@@ -13628,7 +13664,8 @@ function sendMessage() {
             backdrop-filter: blur(10px);
         }
         
-        #volume-slider {
+        /* 垂直音量滑块（用于其他地方） */
+        #vertical-volume-slider {
             width: 6px;
             height: 120px;
             background: rgba(255, 255, 255, 0.2);
@@ -13637,7 +13674,7 @@ function sendMessage() {
             position: relative;
         }
         
-        #volume-level {
+        #vertical-volume-level {
             width: 100%;
             background: linear-gradient(to top, #667eea 0%, #0095ff 100%); /* 蓝色渐变 */
             border-radius: 3px;
@@ -14601,8 +14638,8 @@ function sendMessage() {
                     <!-- 新的音量调节UI -->
                     <div id="volume-control" style="display: none;">
                         <button class="volume-btn" id="volume-up" onclick="adjustVolumeByStep(0.1)" title="增大音量">+</button>
-                        <div id="volume-slider" onclick="adjustVolume(event)">
-                            <div id="volume-level"></div>
+                        <div id="vertical-volume-slider" onclick="adjustVolume(event)">
+                            <div id="vertical-volume-level"></div>
                         </div>
                         <button class="volume-btn" id="volume-down" onclick="adjustVolumeByStep(-0.1)" title="减小音量">-</button>
                     </div>
@@ -16132,8 +16169,8 @@ function sendMessage() {
         // 调整音量
         function adjustVolume(event) {
             const audioPlayer = document.getElementById('audio-player');
-            const volumeSlider = document.getElementById('volume-slider');
-            const volumeLevel = document.getElementById('volume-level');
+            const volumeSlider = document.getElementById('vertical-volume-slider');
+            const volumeLevel = document.getElementById('vertical-volume-level');
             const rect = volumeSlider.getBoundingClientRect();
             
             // 计算点击位置相对于滑块底部的距离
@@ -16156,7 +16193,7 @@ function sendMessage() {
         // 按步长调整音量
         function adjustVolumeByStep(step) {
             const audioPlayer = document.getElementById('audio-player');
-            const volumeLevel = document.getElementById('volume-level');
+            const volumeLevel = document.getElementById('vertical-volume-level');
             
             audioPlayer.volume = Math.max(0, Math.min(1, audioPlayer.volume + step));
             volumeLevel.style.height = `${audioPlayer.volume * 100}%`;
