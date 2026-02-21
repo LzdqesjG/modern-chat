@@ -74,24 +74,13 @@ function createGroupTables() {
         UNIQUE KEY unique_user_chat (user_id, chat_type, chat_id),
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    
+
     ";
     
     try {
         if ($conn) {
             $conn->exec($create_tables_sql);
-            
-            // 添加缺失的file_type列（兼容性处理）
-            $stmt = $conn->prepare("SHOW COLUMNS FROM messages LIKE 'file_type'");
-            $stmt->execute();
-            if (!$stmt->fetch()) {
-                $conn->exec("ALTER TABLE messages ADD COLUMN file_type VARCHAR(50) NULL");
-            }
-            
-            $stmt = $conn->prepare("SHOW COLUMNS FROM group_messages LIKE 'file_type'");
-            $stmt->execute();
-            if (!$stmt->fetch()) {
-                $conn->exec("ALTER TABLE group_messages ADD COLUMN file_type VARCHAR(50) NULL");
-            }
         }
         error_log("群聊相关数据表创建成功");
     } catch (PDOException $e) {
@@ -354,6 +343,18 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             background: transparent;
             width: 100vw;
             overflow: hidden;
+            position: relative;
+        }
+        
+        /* 确保body不会出现水平滚动条 */
+        body {
+            overflow-x: hidden !important;
+        }
+        
+        /* 确保所有容器都不会出现水平滚动条 */
+        * {
+            box-sizing: border-box;
+            max-width: 100%;
         }
         
         /* 左侧边栏 - 微信风格 */
@@ -793,6 +794,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             background: var(--bg-color);
             width: 100%;
             height: 100vh;
+            overflow: hidden;
         }
         
         /* 聊天区域顶部 - 对方信息 */
@@ -912,6 +914,14 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             font-size: 14px;
             line-height: 1.4;
             word-wrap: break-word;
+            overflow-wrap: break-word;
+            white-space: normal;
+        }
+        
+        .message-text {
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            white-space: normal;
         }
         
         .message.sent .message-content {
@@ -1129,158 +1139,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             transform: scale(1.05);
         }
         
-        /* 音频播放器样式 */
-        .custom-audio-player {
-            display: flex;
-            align-items: center;
-            background: var(--input-bg);
-            border-radius: 20px;
-            padding: 20px 25px;
-            max-width: 100%;
-            width: 100%;
-            position: relative;
-            z-index: 2000;
-            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
-            transition: all 0.2s ease;
-            height: auto;
-            min-height: 110px;
-            overflow: visible;
-            border: 2px solid var(--border-color);
-            color: var(--text-color);
-        }
-        
-        /* 音频播放器头像 */
-        .audio-sender-avatar {
-            width: 45px;
-            height: 45px;
-            border-radius: 50%;
-            margin-right: 20px;
-            object-fit: cover;
-            border: 3px solid #12b7f5;
-        }
-        
-        .message.sent .custom-audio-player {
-            background: rgba(18, 183, 245, 0.1);
-            border-color: rgba(18, 183, 245, 0.3);
-        }
-        
-        .audio-element {
-            display: none;
-        }
-        
-        .audio-play-btn {
-            width: 55px;
-            height: 55px;
-            border: none;
-            background: linear-gradient(135deg, #12b7f5 0%, #00a2e8 100%);
-            color: white;
-            border-radius: 50%;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-right: 25px;
-            transition: all 0.2s ease;
-            z-index: 2001;
-            position: relative;
-            box-shadow: 0 5px 18px rgba(18, 183, 245, 0.5);
-        }
-        
-        .audio-play-btn:hover {
-            background: linear-gradient(135deg, #00a2e8 0%, #008cba 100%);
-            transform: scale(1.15);
-            box-shadow: 0 8px 24px rgba(18, 183, 245, 0.6);
-        }
-        
-        .audio-play-btn:active {
-            transform: scale(0.95);
-        }
-        
-        .audio-play-btn.playing {
-            background: linear-gradient(135deg, #ff4d4f 0%, #ff3333 100%);
-            box-shadow: 0 5px 18px rgba(255, 77, 79, 0.5);
-        }
-        
-        .audio-play-btn::before {
-            content: '▶';
-            font-size: 22px;
-            margin-left: 5px;
-            font-weight: bold;
-        }
-        
-        .audio-play-btn.playing::before {
-            content: '⏸';
-            margin-left: 0;
-            font-size: 20px;
-        }
-        
-        .audio-progress-container {
-            flex: 1;
-            margin: 0 25px;
-            position: relative;
-            z-index: 2001;
-        }
-        
-        .audio-progress-bar {
-            width: 100%;
-            height: 4px;
-            background: rgba(0, 0, 0, 0.1);
-            border-radius: 2px;
-            cursor: pointer;
-            overflow: visible;
-            position: relative;
-            z-index: 2002;
-            pointer-events: all;
-            transition: all 0.2s ease;
-            margin-top: 0; /* 移除垂直居中微调 */
-        }
-        
-        .audio-progress {
-            height: 100%;
-            background: linear-gradient(90deg, #12b7f5 0%, #00a2e8 100%);
-            border-radius: 2px;
-            transition: width 0.1s ease;
-            position: relative;
-            z-index: 2003;
-        }
-        
-        .audio-progress::after {
-            content: '';
-            position: absolute;
-            right: -5px;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 10px;
-            height: 10px;
-            background: white;
-            border-radius: 50%;
-            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-            z-index: 2004;
-            transition: all 0.2s ease;
-            cursor: pointer;
-            border: 2px solid #12b7f5;
-        }
-        
-        .audio-progress-bar:hover {
-            height: 6px;
-        }
-        
-        .audio-progress-bar:hover .audio-progress::after {
-            transform: translateY(-50%) scale(1.1);
-        }
-        
-        .audio-time {
-            font-size: 11px;
-            color: #666;
-            min-width: 32px;
-            text-align: center;
-            margin-left: 8px;
-            flex-shrink: 0;
-        }
-        
-        .message.sent .audio-time {
-            color: rgba(255, 255, 255, 0.8);
-        }
+
         
         /* 文件消息样式 */
         .message-file {
@@ -3219,6 +3078,159 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 alert('发送邀请失败，请稍后重试');
             });
         }
+        // 退出群聊
+        function leaveGroup(groupId) {
+            if (confirm('确定要退出该群聊吗？')) {
+                fetch(`leave_group.php?group_id=${groupId}`, {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('已成功退出群聊');
+                        window.location.href = 'mobilechat.php';
+                    } else {
+                        alert(`退出失败：${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    console.error('退出群聊失败:', error);
+                    alert('退出失败：网络错误');
+                });
+            }
+        }
+        
+        // 解散群聊
+        function deleteGroup(groupId) {
+            if (confirm('确定要解散该群聊吗？此操作不可恢复！')) {
+                fetch(`delete_group.php?group_id=${groupId}`, {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('群聊已成功解散');
+                        window.location.href = 'mobilechat.php';
+                    } else {
+                        alert(`解散失败：${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    console.error('解散群聊失败:', error);
+                    alert('解散失败：网络错误');
+                });
+            }
+        }
+
+        // 转让群主
+        function transferGroupOwnership(groupId) {
+            // 创建并显示转让群主弹窗
+            const modalId = 'transfer-ownership-modal';
+            let modal = document.getElementById(modalId);
+            
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = modalId;
+                modal.className = 'modal';
+                modal.style.cssText = `
+                    display: flex;
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0, 0, 0, 0.5);
+                    z-index: 2000;
+                    justify-content: center;
+                    align-items: center;
+                `;
+                document.body.appendChild(modal);
+            }
+            
+            modal.innerHTML = `
+                <div class="modal-content" style="background: var(--modal-bg); color: var(--text-color); width: 90%; max-width: 400px; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; max-height: 80vh;">
+                    <div style="padding: 15px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="margin: 0; font-size: 18px;">转让群主</h3>
+                        <button onclick="document.getElementById('${modalId}').remove()" style="background: none; border: none; color: var(--text-secondary); font-size: 24px; cursor: pointer;">×</button>
+                    </div>
+                    <div id="transfer-members-list" style="padding: 20px; overflow-y: auto; flex: 1;">
+                        <p style="text-align: center; color: var(--text-desc);">加载成员中...</p>
+                    </div>
+                </div>
+            `;
+            
+            // 加载群成员
+            fetch(`get_group_members.php?group_id=${groupId}`)
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('transfer-members-list');
+                    if (data.success) {
+                        if (data.members && data.members.length > 1) { // 只有自己不算
+                            let html = '<p style="margin-bottom: 15px; font-size: 14px; color: var(--text-desc);">请选择一位成员作为新群主：</p>';
+                            html += '<div style="display: flex; flex-direction: column; gap: 10px;">';
+                            
+                            let hasCandidates = false;
+                            data.members.forEach(member => {
+                                // 如果 member.is_owner 为 true，则是自己，跳过
+                                if (!member.is_owner) {
+                                    hasCandidates = true;
+                                    const avatar = member.avatar && member.avatar !== 'default_avatar.png' 
+                                        ? `<img src="${member.avatar}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">`
+                                        : `<div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold;">${member.username.substring(0, 2)}</div>`;
+                                        
+                                    html += `
+                                        <div onclick="confirmTransferOwnership(${groupId}, ${member.id}, '${member.username}')" style="display: flex; align-items: center; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='var(--hover-bg)'" onmouseout="this.style.background='transparent'">
+                                            <div style="margin-right: 12px;">${avatar}</div>
+                                            <div>
+                                                <div style="font-weight: 600;">${member.username}</div>
+                                                <div style="font-size: 12px; color: var(--text-desc);">${member.email || ''}</div>
+                                            </div>
+                                            <div style="margin-left: auto; color: var(--text-desc);">➡</div>
+                                        </div>
+                                    `;
+                                }
+                            });
+                            html += '</div>';
+                            
+                            if (!hasCandidates) {
+                                container.innerHTML = '<p style="text-align: center; color: var(--text-desc);">群里只有你自己，无法转让。</p>';
+                            } else {
+                                container.innerHTML = html;
+                            }
+                        } else {
+                            container.innerHTML = '<p style="text-align: center; color: var(--text-desc);">群里没有其他成员，无法转让。</p>';
+                        }
+                    } else {
+                        container.innerHTML = `<p style="text-align: center; color: #ff4757;">加载失败: ${data.message}</p>`;
+                    }
+                })
+                .catch(error => {
+                    console.error('加载成员失败:', error);
+                    document.getElementById('transfer-members-list').innerHTML = '<p style="text-align: center; color: #ff4757;">加载失败: 网络错误</p>';
+                });
+        }
+        
+        // 确认转让
+        function confirmTransferOwnership(groupId, newOwnerId, username) {
+            if (confirm(`确定要将群主转让给 ${username} 吗？此操作不可撤销，您将变为普通成员。`)) {
+                fetch(`transfer_ownership.php?group_id=${groupId}&new_owner_id=${newOwnerId}`, {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert(`已成功将群主转让给 ${username}`);
+                        window.location.reload();
+                    } else {
+                        alert(`转让失败：${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    console.error('转让失败:', error);
+                    alert('转让失败：网络错误');
+                });
+            }
+        }
     </script>
                 <div class="user-avatar">
                     <?php if (!empty($current_user['avatar'])): ?>
@@ -3432,8 +3444,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                             $msg_time = strtotime($msg['created_at']);
                             $now = time();
                             $time_diff_minutes = ($now - $msg_time) / 60;
-                            // 使用 <= 2，与 JavaScript 保持一致，允许刚好 2 分钟时撤回
-                            $is_within_2_minutes = $time_diff_minutes <= 2;
+                            $is_within_2_minutes = $time_diff_minutes < 2;
                         ?>
                         <div class="message <?php echo $is_sent ? 'sent' : 'received'; ?>" 
                             data-message-id="<?php echo $msg['id']; ?>" 
@@ -3461,18 +3472,15 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                                             echo "<img src='".htmlspecialchars($file_path)."' alt='".htmlspecialchars($file_name)."' class='message-image' data-file-name='".htmlspecialchars($file_name)."' data-file-type='image' data-file-path='".htmlspecialchars($file_path)."'>";
                                             echo "</div>";
                                         } elseif (in_array($ext, $audio_exts)) {
-                                            // 音频类型
+                                            // 音频类型 - 作为普通文件显示
                                             echo "<div class='message-media'>";
-                                            echo "<div class='custom-audio-player'>";
-                                            echo "<audio src='".htmlspecialchars($file_path)."' class='audio-element' data-file-name='".htmlspecialchars($file_name)."' data-file-type='audio' data-file-path='".htmlspecialchars($file_path)."'></audio>";
-                                            echo "<button class='audio-play-btn' title='播放'></button>";
-                                            echo "<div class='audio-progress-container'>";
-                                            echo "<div class='audio-progress-bar'>";
-                                            echo "<div class='audio-progress'></div>";
+                                            echo "<div class='message-file'>";
+                                            echo "<span class='file-icon' style='font-size: 24px;'>🎵</span>";
+                                            echo "<div class='file-info' style='flex: 1;'>";
+                                            echo "<h4 style='margin: 0; font-size: 14px; font-weight: 500;'>".htmlspecialchars($file_name)."</h4>";
+                                            echo "<p style='margin: 2px 0 0 0; font-size: 12px; color: #666;'>".round($file_size / 1024, 2)." KB</p>";
                                             echo "</div>";
-                                            echo "</div>";
-                                            echo "<span class='audio-time current-time'>0:00</span>";
-                                            echo "<span class='audio-duration'>0:00</span>";
+                                            echo "<button style='background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; transition: all 0.2s ease;' onclick='addDownloadTask(\"".htmlspecialchars($file_name)."\", \"".htmlspecialchars($file_path)."\", ".$file_size.", \"audio\")'>下载</button>";
                                             echo "</div>";
                                             echo "</div>";
                                         } elseif (in_array($ext, $video_exts)) {
@@ -3500,9 +3508,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                                         } else {
                                             // 文本消息，检测并转换链接
                                             $content = $msg['content'];
-                                            // 严格的HTML净化：移除所有HTML标签，只保留纯文本
-                                            $content = strip_tags($content);
-                                            // 再次进行HTML转义，确保绝对安全
+                                            // 进行HTML转义，确保HTML标签被显示而不是执行
                                             $content = htmlspecialchars($content);
                                             // 仅允许链接转换，不允许其他HTML
                                             $pattern = '/(https?:\/\/[^\s]+)/';
@@ -3595,9 +3601,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                                         } else {
                                             // 文本消息，检测并转换链接
                                             $content = $msg['content'];
-                                            // 严格的HTML净化：移除所有HTML标签，只保留纯文本
-                                            $content = strip_tags($content);
-                                            // 再次进行HTML转义，确保绝对安全
+                                            // 进行HTML转义，确保HTML标签被显示而不是执行
                                             $content = htmlspecialchars($content);
                                             // 仅允许链接转换，不允许其他HTML
                                             $pattern = '/(https?:\/\/[^\s]+)/';
@@ -3720,7 +3724,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 ×
             </button>
             <video id="qr-video" style="width: 100%; height: auto; border-radius: 8px;" playsinline></video>
-            <div id="scan-hint" style="color: white; text-align: center; margin-top: 20px; font-size: 16px;">请将二维码对准相机</div>
+            <div id="scan-hint" style="color: white; text-align: center; margin-top: 20px; font-size: 16px;">请将二维码对准相机<br><small style="font-size: 12px; opacity: 0.8;">如果二维码背景为黑色，建议开启手机颜色反转功能</small></div>
         </div>
     </div>
     
@@ -3771,14 +3775,15 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
         // 初始化扫码器
         async function initScanner() {
             try {
-                // 请求相机权限，使用后置相机
+                // 请求相机权限，使用后置相机，并优化参数
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: 'environment',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
+                        width: { ideal: 1920 }, // 提高分辨率
+                        height: { ideal: 1080 },
                         focusMode: 'continuous',
-                        exposureMode: 'continuous'
+                        exposureMode: 'continuous',
+                        whiteBalanceMode: 'continuous'
                     }
                 });
                 
@@ -3807,7 +3812,12 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
         
         // 开始扫描
         function startScanning(video) {
+            // 创建canvas元素并添加到DOM中
             const canvas = document.createElement('canvas');
+            canvas.style.display = 'none'; // 隐藏canvas元素
+            canvas.id = 'scan-canvas';
+            document.body.appendChild(canvas);
+            
             const ctx = canvas.getContext('2d');
             
             // 设置扫码提示
@@ -3815,12 +3825,21 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             hint.textContent = '正在扫描二维码...';
             hint.style.color = '#4caf50';
             
+            // 降低canvas分辨率以提高处理速度
+            const scale = 0.5; // 缩小到原来的一半
+            
             function scanFrame() {
                 if (video.readyState === video.HAVE_ENOUGH_DATA) {
                     // 确保canvas尺寸与视频尺寸匹配
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    canvas.width = video.videoWidth * scale;
+                    canvas.height = video.videoHeight * scale;
+                    
+                    // 绘制缩放后的图像
+                    ctx.drawImage(
+                        video, 
+                        0, 0, video.videoWidth, video.videoHeight, 
+                        0, 0, canvas.width, canvas.height
+                    );
                     
                     try {
                         // 获取图像数据
@@ -3828,16 +3847,29 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                         
                         // 检查jsQR库是否已加载
                         if (typeof jsQR === 'undefined') {
-                            // jsQR库未加载，显示错误
+                            // jsQR库未加载，尝试加载
                             hint.textContent = '二维码库加载中...';
                             hint.style.color = '#ff9800';
-                            // 继续扫描
-                            requestAnimationFrame(scanFrame);
+                            
+                            // 尝试加载jsQR库
+                            loadJsQR().then(() => {
+                                // 加载成功，继续扫描
+                                requestAnimationFrame(scanFrame);
+                            }).catch(error => {
+                                console.error('加载jsQR库失败:', error);
+                                hint.textContent = '二维码库加载失败';
+                                hint.style.color = '#ff4757';
+                                // 继续尝试扫描
+                                requestAnimationFrame(scanFrame);
+                            });
                             return;
                         }
                         
-                        // 使用jsQR库解码二维码
-                        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                        // 1. 首先应用背景转换预处理（简化版，提高速度）
+                        const processedImageData = fastPreprocess(imageData);
+                        
+                        // 2. 使用处理后的图像尝试识别二维码
+                        const code = jsQR(processedImageData.data, processedImageData.width, processedImageData.height, {
                             inversionAttempts: 'both'
                         });
                         
@@ -3847,6 +3879,8 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                             hint.style.color = '#4caf50';
                             // 处理扫描结果
                             handleScanResult(code.data);
+                            // 移除canvas元素
+                            document.body.removeChild(canvas);
                         } else {
                             // 继续扫描
                             requestAnimationFrame(scanFrame);
@@ -3863,6 +3897,200 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             
             // 开始扫描循环
             requestAnimationFrame(scanFrame);
+        }
+        
+        // 快速预处理函数，提高实时性
+        function fastPreprocess(imageData) {
+            const data = imageData.data;
+            
+            // 1. 颜色反转：将白色二维码黑色背景转换为标准的黑色二维码白色背景
+            for (let i = 0; i < data.length; i += 4) {
+                // 反转RGB值
+                data[i] = 255 - data[i];     // R
+                data[i + 1] = 255 - data[i + 1]; // G
+                data[i + 2] = 255 - data[i + 2]; // B
+            }
+            
+            // 2. 快速二值化处理
+            const threshold = 128;
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                const brightness = (r + g + b) / 3;
+                
+                if (brightness < threshold) {
+                    // 转换为黑色
+                    data[i] = 0;
+                    data[i + 1] = 0;
+                    data[i + 2] = 0;
+                } else {
+                    // 转换为白色
+                    data[i] = 255;
+                    data[i + 1] = 255;
+                    data[i + 2] = 255;
+                }
+            }
+            
+            return imageData;
+        }
+        
+        // 增强的图像预处理，支持背景转换和黑色背景
+        function simplePreprocess(imageData) {
+            const data = imageData.data;
+            const width = imageData.width;
+            const height = imageData.height;
+            
+            // 1. 颜色反转：将白色二维码黑色背景转换为标准的黑色二维码白色背景
+            for (let i = 0; i < data.length; i += 4) {
+                // 反转RGB值
+                data[i] = 255 - data[i];     // R
+                data[i + 1] = 255 - data[i + 1]; // G
+                data[i + 2] = 255 - data[i + 2]; // B
+            }
+            
+            // 2. 高斯模糊降噪
+            const blurredData = gaussianBlur(data, width, height);
+            
+            // 3. 边缘增强
+            const edgeEnhancedData = edgeEnhance(blurredData, width, height);
+            
+            // 4. 自适应阈值二值化处理：根据局部区域自动调整阈值
+            adaptiveThreshold(edgeEnhancedData, width, height);
+            
+            // 5. 增强对比度
+            const contrast = 3.0; // 进一步增加对比度以提高清晰度
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                
+                // 应用对比度调整
+                data[i] = Math.min(255, Math.max(0, (r - 128) * contrast + 128));
+                data[i + 1] = Math.min(255, Math.max(0, (g - 128) * contrast + 128));
+                data[i + 2] = Math.min(255, Math.max(0, (b - 128) * contrast + 128));
+            }
+            
+            return imageData;
+        }
+        
+        // 高斯模糊降噪
+        function gaussianBlur(data, width, height) {
+            const kernel = [
+                [1, 2, 1],
+                [2, 4, 2],
+                [1, 2, 1]
+            ];
+            const kernelSum = 16;
+            
+            const blurredData = new Uint8ClampedArray(data);
+            
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    let r = 0, g = 0, b = 0;
+                    
+                    for (let ky = -1; ky <= 1; ky++) {
+                        for (let kx = -1; kx <= 1; kx++) {
+                            const pixelIndex = ((y + ky) * width + (x + kx)) * 4;
+                            r += data[pixelIndex] * kernel[ky + 1][kx + 1];
+                            g += data[pixelIndex + 1] * kernel[ky + 1][kx + 1];
+                            b += data[pixelIndex + 2] * kernel[ky + 1][kx + 1];
+                        }
+                    }
+                    
+                    const pixelIndex = (y * width + x) * 4;
+                    blurredData[pixelIndex] = r / kernelSum;
+                    blurredData[pixelIndex + 1] = g / kernelSum;
+                    blurredData[pixelIndex + 2] = b / kernelSum;
+                }
+            }
+            
+            return blurredData;
+        }
+        
+        // 边缘增强
+        function edgeEnhance(data, width, height) {
+            const kernel = [
+                [-1, -1, -1],
+                [-1, 9, -1],
+                [-1, -1, -1]
+            ];
+            
+            const enhancedData = new Uint8ClampedArray(data);
+            
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    let r = 0, g = 0, b = 0;
+                    
+                    for (let ky = -1; ky <= 1; ky++) {
+                        for (let kx = -1; kx <= 1; kx++) {
+                            const pixelIndex = ((y + ky) * width + (x + kx)) * 4;
+                            r += data[pixelIndex] * kernel[ky + 1][kx + 1];
+                            g += data[pixelIndex + 1] * kernel[ky + 1][kx + 1];
+                            b += data[pixelIndex + 2] * kernel[ky + 1][kx + 1];
+                        }
+                    }
+                    
+                    const pixelIndex = (y * width + x) * 4;
+                    enhancedData[pixelIndex] = Math.min(255, Math.max(0, r));
+                    enhancedData[pixelIndex + 1] = Math.min(255, Math.max(0, g));
+                    enhancedData[pixelIndex + 2] = Math.min(255, Math.max(0, b));
+                }
+            }
+            
+            return enhancedData;
+        }
+        
+        // 自适应阈值二值化
+        function adaptiveThreshold(data, width, height) {
+            const blockSize = 15;
+            const constant = 10;
+            
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    let sum = 0;
+                    let count = 0;
+                    
+                    // 计算局部区域的平均值
+                    for (let ky = -Math.floor(blockSize/2); ky <= Math.floor(blockSize/2); ky++) {
+                        for (let kx = -Math.floor(blockSize/2); kx <= Math.floor(blockSize/2); kx++) {
+                            const nx = x + kx;
+                            const ny = y + ky;
+                            
+                            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                                const pixelIndex = (ny * width + nx) * 4;
+                                const r = data[pixelIndex];
+                                const g = data[pixelIndex + 1];
+                                const b = data[pixelIndex + 2];
+                                sum += (r + g + b) / 3;
+                                count++;
+                            }
+                        }
+                    }
+                    
+                    const mean = sum / count;
+                    const threshold = mean - constant;
+                    
+                    // 二值化处理
+                    const pixelIndex = (y * width + x) * 4;
+                    const r = data[pixelIndex];
+                    const g = data[pixelIndex + 1];
+                    const b = data[pixelIndex + 2];
+                    const brightness = (r + g + b) / 3;
+                    
+                    if (brightness < threshold) {
+                        // 转换为黑色
+                        data[pixelIndex] = 0;
+                        data[pixelIndex + 1] = 0;
+                        data[pixelIndex + 2] = 0;
+                    } else {
+                        // 转换为白色
+                        data[pixelIndex] = 255;
+                        data[pixelIndex + 1] = 255;
+                        data[pixelIndex + 2] = 255;
+                    }
+                }
+            }
         }
         
         // 处理扫描结果
@@ -3887,6 +4115,8 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                         currentScanUrl = result;
                         currentQid = qid;
                         
+                        const deviceType = detectDeviceType();
+                        
                         // 扫描后立即更新状态为scanned
                         fetch('scan_login.php', {
                             method: 'POST',
@@ -3896,11 +4126,21 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                             body: new URLSearchParams({
                                 'qid': qid,
                                 'action': 'scan',
-                                'source': 'mobilechat.php'
+                                'source': 'mobilechat.php',
+                                'app': deviceType
                             })
-                        }).catch(error => {
-                            console.error('更新扫描状态失败:', error);
-                        });
+                        }).then(response => response.json())
+                          .then(data => {
+                              if (!data.success) {
+                                  console.error('更新扫描状态失败:', data.message);
+                              }
+                          })
+                          .catch(error => {
+                              console.error('更新扫描状态失败:', error);
+                              // 即使更新状态失败，也继续显示确认登录对话框
+                              // 因为用户已经扫描了二维码，可能只是网络问题
+                              console.log('更新扫描状态失败，但继续显示确认登录对话框');
+                          });
                         
                         // 显示确认登录对话框
                         console.log('显示确认登录对话框');
@@ -3942,7 +4182,12 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             
             // 从服务器获取扫码登录的IP地址
             fetch(`get_scan_ip.php?qid=${currentQid}`)
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('网络请求失败: ' + response.status);
+                    }
+                    return response.json();
+                })
                 .then(data => {
                     if (data.success) {
                         currentIpAddress = data.ip_address;
@@ -3988,6 +4233,8 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             const modal = document.getElementById('confirm-modal');
             modal.style.display = 'none';
             
+            const deviceType = detectDeviceType();
+            
             // 发送拒绝登录请求，更新状态为rejected
             fetch('scan_login.php', {
                 method: 'POST',
@@ -3997,7 +4244,8 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 body: new URLSearchParams({
                     'qid': currentQid,
                     'action': 'reject',
-                    'source': 'mobilechat.php'
+                    'source': 'mobilechat.php',
+                    'app': deviceType
                 })
             }).then(response => response.json())
               .then(result => {
@@ -4008,9 +4256,26 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
               });
         }
         
+        // 检测设备类型
+        function detectDeviceType() {
+            const userAgent = navigator.userAgent.toLowerCase();
+            
+            if (userAgent.includes('android')) {
+                return 'Android';
+            } else if (userAgent.includes('iphone') || userAgent.includes('ipad') || userAgent.includes('ios')) {
+                return 'IOS';
+            } else if (userAgent.includes('harmonyos') || userAgent.includes('huawei')) {
+                return 'HarmonyOS';
+            } else {
+                return 'Unknown';
+            }
+        }
+        
         // 发送登录请求
         async function sendLoginRequest() {
             try {
+                const deviceType = detectDeviceType();
+                
                 const response = await fetch('scan_login.php', {
                     method: 'POST',
                     headers: {
@@ -4019,9 +4284,15 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                     body: new URLSearchParams({
                         'qid': currentQid,
                         'user': '<?php echo $username; ?>',
-                        'source': 'mobilechat.php'
+                        'source': 'mobilechat.php',
+                        'app': deviceType
                     })
                 });
+                
+                // 检查响应状态
+                if (!response.ok) {
+                    throw new Error('网络请求失败: ' + response.status);
+                }
                 
                 const result = await response.json();
                 
@@ -4033,7 +4304,17 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 }
             } catch (error) {
                 console.error('发送登录请求失败:', error);
-                alert('登录失败，请稍后重试');
+                // 检查是否已经成功登录
+                // 如果用户已经在页面上，说明登录可能已经成功，只是网络请求有问题
+                if (document.getElementById('menu-panel')) {
+                    // 用户已经在聊天页面，可能登录成功了
+                    console.log('用户已在聊天页面，可能登录成功');
+                    // 不显示错误消息，而是显示成功提示
+                    showSuccessModal();
+                } else {
+                    // 用户不在聊天页面，显示错误消息
+                    alert('登录失败，请稍后重试');
+                }
             }
         }
         
@@ -4735,34 +5016,24 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 // 从IndexedDB加载设置
                 const settings = await indexedDBManager.getSettings();
                 const linkPopup = settings['setting-link-popup'] !== false;
-                const musicPlayer = settings['setting-music-player'] !== false;
-                const musicMode = settings['setting-music-mode'] || 'random';
+
                 
                 // 设置开关状态
                 const linkPopupEl = document.getElementById('setting-link-popup');
                 if (linkPopupEl) linkPopupEl.checked = linkPopup;
                 
-                const musicPlayerEl = document.getElementById('setting-music-player');
-                if (musicPlayerEl) musicPlayerEl.checked = musicPlayer;
-                
-                const musicModeEl = document.getElementById('setting-music-mode');
-                if (musicModeEl) musicModeEl.value = musicMode;
+
             } catch (error) {
                 console.error('加载设置失败:', error);
                 // 从localStorage迁移设置到IndexedDB
                 const linkPopup = localStorage.getItem('setting-link-popup') === 'false' ? false : true;
-                const musicPlayer = localStorage.getItem('setting-music-player') === 'false' ? false : true;
-                const musicMode = localStorage.getItem('setting-music-mode') || 'random';
+
                 
                 // 设置开关状态
                 const linkPopupEl = document.getElementById('setting-link-popup');
                 if (linkPopupEl) linkPopupEl.checked = linkPopup;
                 
-                const musicPlayerEl = document.getElementById('setting-music-player');
-                if (musicPlayerEl) musicPlayerEl.checked = musicPlayer;
-                
-                const musicModeEl = document.getElementById('setting-music-mode');
-                if (musicModeEl) musicModeEl.value = musicMode;
+
                 
                 // 保存到IndexedDB
                 if (typeof saveSettings === 'function') {
@@ -4776,14 +5047,10 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             try {
                 // 获取开关状态
                 const linkPopup = document.getElementById('setting-link-popup').checked;
-                const musicPlayer = document.getElementById('setting-music-player').checked;
-                const musicMode = document.getElementById('setting-music-mode').value;
                 
                 // 保存到IndexedDB
                 await indexedDBManager.saveSettings({
-                    'setting-link-popup': linkPopup,
-                    'setting-music-player': musicPlayer,
-                    'setting-music-mode': musicMode
+                    'setting-link-popup': linkPopup
                 });
                 
                 // 应用设置
@@ -4792,8 +5059,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 console.error('保存设置失败:', error);
                 // 降级到localStorage
                 localStorage.setItem('setting-link-popup', linkPopup);
-                localStorage.setItem('setting-music-player', musicPlayer);
-                localStorage.setItem('setting-music-mode', musicMode);
+
             }
         }
         
@@ -4825,13 +5091,9 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
         function applySettings() {
             // 这里可以添加应用设置的逻辑
             const linkPopup = localStorage.getItem('setting-link-popup') === 'true';
-            const musicPlayer = localStorage.getItem('setting-music-player') === 'true';
-            const musicMode = localStorage.getItem('setting-music-mode') || 'random';
             
             console.log('应用设置:', {
-                linkPopup,
-                musicPlayer,
-                musicMode
+                linkPopup
             });
         }
         
@@ -5780,7 +6042,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 return new Promise((resolve, reject) => {
                     try {
                         // 迁移设置
-                        const settingKeys = ['setting-link-popup', 'setting-music-player'];
+                        const settingKeys = ['setting-link-popup'];
                         const migrationPromises = [];
                         
                         settingKeys.forEach(key => {
@@ -6394,7 +6656,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                             messagesContainer.scrollTop = messagesContainer.scrollHeight;
                             
                             // 初始化新添加的音频播放器
-                            initAudioPlayers();
+
                             
                             // 初始化新添加的聊天视频，转换为Blob URL
                             initChatVideos();
@@ -6585,33 +6847,11 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             const input = document.getElementById('message-input');
             let message = input.value.trim();
             
-            // 严格检查消息是否包含HTML标签、HTML实体或脚本
-            function containsHtmlContent(text) {
-                // 简单检测HTML标签（避免复杂正则表达式导致的解析问题）
-                const hasHtmlTags = text.includes('<') && text.includes('>');
-                // 检测HTML实体
-                const hasHtmlEntities = text.includes('&');
-                // 检测脚本相关内容
-                const hasScriptContent = text.includes('<script') || text.includes('javascript:') || text.includes('vbscript:');
-                // 检测常见的XSS攻击向量
-                const hasXssVectors = text.match(/on[a-zA-Z]+\s*=|expression\(|eval\(|alert\(/i);
-                
-                return hasHtmlTags || hasHtmlEntities || hasScriptContent || hasXssVectors;
-            }
-            
             if (message) {
-                // 前端严格HTML内容校验
-                if (containsHtmlContent(message)) {
-                    showNotification('禁止发送HTML代码、脚本或特殊字符 ❌', 'error');
-                    return;
-                }
+                // 对消息内容进行HTML转义，确保HTML标签被显示而不是执行
+                message = message.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
                 
-                // 额外安全措施：移除所有可能的HTML标签（双重保险）
-                message = message.replace(/<[^>]*>/g, '');
-                message = message.replace(/&[a-zA-Z0-9#]+;/g, '');
-                message = message.trim();
-                
-                // 如果移除HTML标签后消息为空，不发送
+                // 如果转义后消息为空，不发送
                 if (!message) {
                     showNotification('消息内容不能为空 ❌', 'error');
                     return;
@@ -8150,7 +8390,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             initChatMedia();
             
             // 初始化音频播放器
-            initAudioPlayers();
+
             
             // 滚动到底部
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -10045,7 +10285,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 });
                 
                 // 初始化新添加的音频播放器
-                initAudioPlayers();
+    
                 
                 // 初始化新添加的视频元素
                 initVideoElements();
@@ -10060,6 +10300,16 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
         }
         
         // 创建消息元素
+        // HTML转义函数，确保HTML标签被显示为纯文本
+        function escapeHtml(text) {
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+        
         function createMessageElement(msg, chatType, chatId) {
             const messageDiv = document.createElement('div');
             // 确保类型匹配，使用 == 进行比较
@@ -10157,24 +10407,23 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                         recallHtml = `<button class='file-action-item' onclick="event.stopPropagation(); recallMessage(this, '${msg.id}', '${chatType}', '${chatId}')" style='display: block; width: 100%; padding: 8px 16px; text-align: left; border: none; background: none; cursor: pointer; font-size: 14px; color: #333; transition: background-color 0.2s ease;'>撤回</button>`;
                     }
 
-                    // 音频类型
+                    // 音频类型 - 作为普通文件显示
                     contentHtml = `<div class='message-media' style='position: relative;'>
-                        <div class='custom-audio-player'>
-                            <audio src='${fileUrl}' class='audio-element' data-file-name='${file_name}' data-file-type='audio' data-file-path='${file_path}'></audio>
-                            <button class='audio-play-btn' title='播放'></button>
-                            <div class='audio-progress-container'>
-                                <div class='audio-progress-bar'>
-                                    <div class='audio-progress'></div>
-                                </div>
+                        <div class='message-file' onclick="event.preventDefault(); addDownloadTask('${file_name}', '${file_path}', ${file_size}, 'audio');">
+                            <span class='file-icon' style='font-size: 24px;'>🎵</span>
+                            <div class='file-info' style='flex: 1;'>
+                                <h4 style='margin: 0; font-size: 14px; font-weight: 500;'>${file_name}</h4>
+                                <p style='margin: 2px 0 0 0; font-size: 12px; color: #666;'>${(file_size / 1024).toFixed(2)} KB</p>
                             </div>
-                            <span class='audio-time current-time'>0:00</span>
-                            <span class='audio-duration'>0:00</span>
+                            <button style='background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; transition: all 0.2s ease;' onclick="event.stopPropagation(); addDownloadTask('${file_name}', '${file_path}', ${file_size}, 'audio');">下载</button>
                             <!-- 音频操作按钮 -->
-                            <div style='position: relative; display: inline-block; margin-left: 10px;'>
-                                <button class='media-action-btn' onclick="event.stopPropagation(); toggleMediaActionsMenu(event, this)" style='width: 28px; height: 28px; font-size: 14px; background: rgba(0,0,0,0.1); border: none; border-radius: 50%; color: #666; cursor: pointer;'>⋮</button>
-                                <div class='file-actions-menu' style='display: none; position: absolute; top: 35px; right: 0; background: white; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.15); padding: 8px 0; z-index: 5000; min-width: 80px;'>
-                                    <button class='file-action-item' onclick="event.stopPropagation(); addDownloadTask('${file_name}', '${file_path}', ${file_size}, 'audio');" style='display: block; width: 100%; padding: 8px 16px; text-align: left; border: none; background: none; cursor: pointer; font-size: 14px; color: #333; transition: background-color 0.2s ease;'>下载</button>
-                                    ${recallHtml}
+                            <div style='position: absolute; top: 10px; right: 10px; display: flex; gap: 5px; opacity: 1 !important;'>
+                                <div style='position: relative;'>
+                                    <button class='media-action-btn' onclick="event.stopPropagation(); toggleMediaActionsMenu(event, this)" style='width: 32px; height: 32px; font-size: 16px; background: rgba(0,0,0,0.6); border: none; border-radius: 50%; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center;'>⋮</button>
+                                    <div class='file-actions-menu' style='display: none; position: absolute; top: 40px; right: 0; background: white; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.15); padding: 8px 0; z-index: 5000; min-width: 80px;'>
+                                        <button class='file-action-item' onclick="event.stopPropagation(); addDownloadTask('${file_name}', '${file_path}', ${file_size}, 'audio');" style='display: block; width: 100%; padding: 8px 16px; text-align: left; border: none; background: none; cursor: pointer; font-size: 14px; color: #333; transition: background-color 0.2s ease;'>下载</button>
+                                        ${recallHtml}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -10233,7 +10482,8 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             }
             } else {
                 // 检测消息是否包含链接
-                const messageWithLinks = msg.content.replace(/(https?:\/\/[^\s]+)/g, function(link) {
+                const escapedContent = escapeHtml(msg.content);
+                const messageWithLinks = escapedContent.replace(/(https?:\/\/[^\s]+)/g, function(link) {
                     return `<a href="#" onclick="event.preventDefault(); handleLinkClick('${link}')" style="color: #12b7f5; text-decoration: underline;">${link}</a>`;
                 });
                 contentHtml = `<div class='message-text'>${messageWithLinks}</div>`;
@@ -11239,11 +11489,22 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             
             const song = customPlaylistData[customPlaylistIndex++];
             
+            // 确保URL使用HTTPS
+            let audioUrl = song.url;
+            if (audioUrl && audioUrl.startsWith('http://')) {
+                audioUrl = audioUrl.replace('http://', 'https://');
+            }
+            
+            let picUrl = song.cover;
+            if (picUrl && picUrl.startsWith('http://')) {
+                picUrl = picUrl.replace('http://', 'https://');
+            }
+            
             currentSong = {
                 name: song.title,
                 artistsname: song.artist,
-                url: song.url,
-                picurl: song.cover
+                url: audioUrl,
+                picurl: picUrl
             };
             
             // 更新UI
@@ -11253,11 +11514,11 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             if(progressInfo) progressInfo.textContent = `${song.name} - ${song.artistsname}`;
             
             const albumImage = document.getElementById('album-image');
-            if (song.picurl && song.picurl !== 'assets/default_music_cover.png') {
-                 albumImage.src = song.picurl;
+            if (picUrl && picUrl !== 'assets/default_music_cover.png') {
+                 albumImage.src = picUrl;
             } else {
                 // 默认图
-                albumImage.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiNkZGQiLz48dGV4dCB4PSI1MCIgeT0iNTAiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXNpemU9IjE0IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIGZpbGw9IiM4ODgiPuVjb3ZlcjwvdGV4dD48L3N2Zz4=';
+                albumImage.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiNkZGQiLz48dGV4dD48L3N2Zz4=';
             }
             albumImage.style.display = 'block';
             
