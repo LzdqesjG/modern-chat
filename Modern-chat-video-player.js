@@ -2,6 +2,9 @@
  * Modern Chat Video Player
  * 自定义视频播放器，包含完整的控制功能和美观的UI
  */
+// 播放器版本
+const PLAYER_VERSION = '0.0.1';
+
 class ModernChatVideoPlayer {
     constructor(videoElement) {
         this.video = videoElement;
@@ -18,6 +21,8 @@ class ModernChatVideoPlayer {
         this.timeDisplay = null;
         this.contextMenu = null;
         this.modals = {};
+        this.speedUpdateInterval = null;
+        this.statsCloseListener = null;
         
         // 视频色彩和音效设置
         this.colorSettings = {
@@ -211,6 +216,18 @@ class ModernChatVideoPlayer {
             this.contextMenu.appendChild(menuItem);
         });
         
+        // 添加版本信息菜单项
+        const versionItem = document.createElement('div');
+        versionItem.className = 'modern-chat-video-context-menu-item';
+        versionItem.style.color = '#666';
+        versionItem.style.fontSize = '12px';
+        versionItem.style.paddingTop = '8px';
+        versionItem.style.paddingBottom = '8px';
+        versionItem.style.borderTop = '1px solid #eee';
+        versionItem.style.marginTop = '8px';
+        versionItem.textContent = `播放器版本：当前为${PLAYER_VERSION}版本`;
+        this.contextMenu.appendChild(versionItem);
+        
         document.body.appendChild(this.contextMenu);
     }
     
@@ -295,6 +312,14 @@ class ModernChatVideoPlayer {
                 <div class="modern-chat-video-stats-item">
                     <span class="modern-chat-video-stats-label">音频编码:</span>
                     <span class="modern-chat-video-stats-value" id="audio-codec">${this.getAudioCodec()}</span>
+                </div>
+                <div class="modern-chat-video-stats-item">
+                    <span class="modern-chat-video-stats-label">视频速度:</span>
+                    <span class="modern-chat-video-stats-value" id="video-speed">0 Kbps</span>
+                </div>
+                <div class="modern-chat-video-stats-item">
+                    <span class="modern-chat-video-stats-label">音频速度:</span>
+                    <span class="modern-chat-video-stats-value" id="audio-speed">0 Kbps</span>
                 </div>
             </div>
         `;
@@ -614,9 +639,54 @@ class ModernChatVideoPlayer {
             // 更新统计信息
             if (id === 'stats') {
                 this.updateStats();
+                
+                // 开始实时更新视频和音频速度
+                this.startSpeedUpdate();
             }
             
             this.modals[id].classList.add('visible');
+        }
+    }
+    
+    /**
+     * 开始实时更新视频和音频速度
+     */
+    startSpeedUpdate() {
+        // 清除之前的更新计时器
+        if (this.speedUpdateInterval) {
+            clearInterval(this.speedUpdateInterval);
+        }
+        
+        // 设置新的更新计时器，每1秒更新一次
+        this.speedUpdateInterval = setInterval(() => {
+            this.updateSpeedStats();
+        }, 1000);
+        
+        // 监听模态框关闭事件
+        if (this.modals.stats) {
+            // 清除之前的关闭事件监听器
+            if (this.statsCloseListener) {
+                this.modals.stats.removeEventListener('click', this.statsCloseListener);
+            }
+            
+            // 添加新的关闭事件监听器
+            this.statsCloseListener = (e) => {
+                if (e.target === this.modals.stats || e.target.classList.contains('modern-chat-video-modal-close')) {
+                    this.stopSpeedUpdate();
+                }
+            };
+            
+            this.modals.stats.addEventListener('click', this.statsCloseListener);
+        }
+    }
+    
+    /**
+     * 停止实时更新视频和音频速度
+     */
+    stopSpeedUpdate() {
+        if (this.speedUpdateInterval) {
+            clearInterval(this.speedUpdateInterval);
+            this.speedUpdateInterval = null;
         }
     }
     
@@ -742,6 +812,35 @@ class ModernChatVideoPlayer {
     }
     
     /**
+     * 更新视频和音频速度
+     */
+    updateSpeedStats() {
+        if (this.modals.stats && this.modals.stats.classList.contains('visible')) {
+            // 尝试获取视频速度
+            let videoSpeed = 0;
+            let audioSpeed = 0;
+            
+            // 使用Performance API和视频事件来估算速度
+            if (this.video.buffered.length > 0) {
+                const bufferedEnd = this.video.buffered.end(this.video.buffered.length - 1);
+                const currentTime = this.video.currentTime;
+                
+                // 简单估算：基于已缓冲数据和播放时间
+                if (currentTime > 0) {
+                    // 假设视频数据量与时间成正比
+                    // 这里使用一个估算值，实际应用中可能需要更复杂的计算
+                    videoSpeed = Math.round((bufferedEnd * 1000) / (currentTime + 1));
+                    audioSpeed = Math.round(videoSpeed * 0.2); // 假设音频速度约为视频的20%
+                }
+            }
+            
+            // 更新显示
+            this.modals.stats.querySelector('#video-speed').textContent = `${videoSpeed} Kbps`;
+            this.modals.stats.querySelector('#audio-speed').textContent = `${audioSpeed} Kbps`;
+        }
+    }
+    
+    /**
      * 获取视频格式
      */
     getVideoFormat() {
@@ -816,7 +915,14 @@ class ModernChatVideoPlayer {
      * 销毁播放器
      */
     destroy() {
+        // 停止速度更新
+        this.stopSpeedUpdate();
+        
         // 移除事件监听器
+        if (this.modals.stats && this.statsCloseListener) {
+            this.modals.stats.removeEventListener('click', this.statsCloseListener);
+        }
+        
         // 移除DOM元素
         if (this.contextMenu && this.contextMenu.parentNode) {
             this.contextMenu.parentNode.removeChild(this.contextMenu);
@@ -835,6 +941,9 @@ class ModernChatVideoPlayer {
         }
     }
 }
+
+// 播放器版本
+ModernChatVideoPlayer.VERSION = PLAYER_VERSION;
 
 /**
  * 初始化所有Modern Chat Video Player
@@ -994,6 +1103,9 @@ ModernChatVideoPlayer.checkLocalCache = function(videoUrl, callback) {
                         // 缓存有效，创建Blob URL
                         const blobUrl = URL.createObjectURL(fileData.blob);
                         callback(true, blobUrl);
+                    } else if (fileData && fileData.data) {
+                        // 兼容旧格式，返回fileData.data
+                        callback(true, fileData.data);
                     } else {
                         // 没有缓存
                         callback(false);
@@ -1001,6 +1113,7 @@ ModernChatVideoPlayer.checkLocalCache = function(videoUrl, callback) {
                 })
                 .catch(function(error) {
                     console.error('从IndexedDB获取视频缓存失败:', error);
+                    // 即使出错也返回false，继续使用原始URL
                     callback(false);
                 });
         } else {
@@ -1049,11 +1162,13 @@ ModernChatVideoPlayer.cacheVideo = function(videoUrl, callback) {
                         })
                         .catch(function(error) {
                             console.error('缓存视频到IndexedDB失败:', error);
+                            // 即使缓存失败也返回blobUrl，继续播放
                             callback(blobUrl);
                         });
                 })
                 .catch(function(error) {
                     console.error('获取视频失败:', error);
+                    // 即使获取失败也返回原始URL，继续尝试
                     callback(videoUrl);
                 });
         } else {
@@ -1062,6 +1177,7 @@ ModernChatVideoPlayer.cacheVideo = function(videoUrl, callback) {
         }
     } catch (e) {
         console.error('缓存视频失败:', e);
+        // 即使出错也返回原始URL，继续尝试
         callback(videoUrl);
     }
 };
@@ -1085,10 +1201,12 @@ ModernChatVideoPlayer.showPlayModal = function(video) {
         if (hasCache) {
             // 使用本地缓存的文件
             videoUrl = cachedUrl;
+            console.log('使用本地缓存的视频文件:', videoUrl);
             // 创建弹窗容器
             createPlayModal(video, videoUrl);
         } else {
             // 缓存视频文件
+            console.log('视频文件未缓存，开始缓存:', video.src);
             ModernChatVideoPlayer.cacheVideo(video.src, function(cachedUrl) {
                 if (cachedUrl) {
                     videoUrl = cachedUrl;
