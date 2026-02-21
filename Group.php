@@ -100,11 +100,14 @@ class Group {
         $stmt->execute();
         $is_admin_exists = $stmt->fetch();
         
+        // 只返回安全的字段
+        $safeFields = "u.id, u.username, u.avatar, u.status, u.last_active";
+        
         if ($group_info && $group_info['all_user_group'] == 1) {
             // 全员群聊，返回所有用户，并正确标记管理员
             if ($is_admin_exists) {
                 // 表结构中有is_admin字段
-                $stmt = $this->conn->prepare("SELECT u.*, 
+                $stmt = $this->conn->prepare("SELECT {$safeFields}, 
                                                 CASE 
                                                     WHEN u.id = ? THEN 1
                                                     WHEN gm.is_admin = 1 THEN 1
@@ -114,7 +117,7 @@ class Group {
                                              LEFT JOIN group_members gm ON u.id = gm.user_id AND gm.group_id = ?");
             } else {
                 // 表结构中有role字段
-                $stmt = $this->conn->prepare("SELECT u.*, 
+                $stmt = $this->conn->prepare("SELECT {$safeFields}, 
                                                 CASE 
                                                     WHEN u.id = ? THEN 1
                                                     WHEN gm.role = 'admin' THEN 1
@@ -128,11 +131,11 @@ class Group {
         } else {
             // 普通群聊，返回group_members表中的成员
             if ($is_admin_exists) {
-                $stmt = $this->conn->prepare("SELECT u.*, gm.is_admin FROM users u 
+                $stmt = $this->conn->prepare("SELECT {$safeFields}, gm.is_admin FROM users u 
                                              JOIN group_members gm ON u.id = gm.user_id 
                                              WHERE gm.group_id = ?");
             } else {
-                $stmt = $this->conn->prepare("SELECT u.*, (gm.role = 'admin') as is_admin FROM users u 
+                $stmt = $this->conn->prepare("SELECT {$safeFields}, (gm.role = 'admin') as is_admin FROM users u 
                                              JOIN group_members gm ON u.id = gm.user_id 
                                              WHERE gm.group_id = ?");
             }

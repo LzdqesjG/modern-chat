@@ -141,7 +141,7 @@ class User {
     // 通过用户名或邮箱搜索用户
     public function searchUsers($search_term, $current_user_id) {
         try {
-            $stmt = $this->conn->prepare("SELECT id, username, email, avatar, status FROM users WHERE (username LIKE ? OR email LIKE ?) AND id != ?");
+            $stmt = $this->conn->prepare("SELECT id, username, avatar, status FROM users WHERE (username LIKE ? OR email LIKE ?) AND id != ?");
             $stmt->execute(["%$search_term%", "%$search_term%", $current_user_id]);
             return $stmt->fetchAll();
         } catch(PDOException $e) {

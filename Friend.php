@@ -92,7 +92,7 @@ class Friend {
     public function getFriends($user_id) {
         try {
             $stmt = $this->conn->prepare(
-                "SELECT u.id, u.username, u.email, u.avatar, u.status, f.created_at 
+                "SELECT u.id, u.username, u.avatar, u.status, f.created_at 
                  FROM friends f 
                  JOIN users u ON f.friend_id = u.id 
                  WHERE f.user_id = ? AND f.status = 'accepted'"
@@ -109,7 +109,7 @@ class Friend {
     public function getPendingRequests($user_id) {
         try {
             $stmt = $this->conn->prepare(
-                "SELECT f.id as request_id, u.id, u.username, u.email, u.avatar, f.created_at 
+                "SELECT f.id as request_id, u.id, u.username, u.avatar, f.created_at 
                  FROM friends f 
                  JOIN users u ON f.user_id = u.id 
                  WHERE f.friend_id = ? AND f.status = 'pending'"
