@@ -8507,7 +8507,59 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 showNotification('拒绝好友请求失败', 'error');
             });
         }
-        
+
+        // 接受群聊邀请
+        function acceptGroupInvitation(invitationId) {
+            const formData = new FormData();
+            formData.append('invitation_id', invitationId);
+
+            fetch('accept_group_invitation.php', {
+                credentials: 'include',
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification('已接受群聊邀请', 'success');
+                    // 重新加载好友申请列表
+                    loadFriendRequests();
+                } else {
+                    showNotification(`接受邀请失败: ${data.message}`, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('接受群聊邀请失败:', error);
+                showNotification('接受群聊邀请失败', 'error');
+            });
+        }
+
+        // 拒绝群聊邀请
+        function rejectGroupInvitation(invitationId) {
+            const formData = new FormData();
+            formData.append('invitation_id', invitationId);
+
+            fetch('reject_group_invitation.php', {
+                credentials: 'include',
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification('已拒绝群聊邀请', 'success');
+                    // 重新加载好友申请列表
+                    loadFriendRequests();
+                } else {
+                    showNotification(`拒绝邀请失败: ${data.message}`, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('拒绝群聊邀请失败:', error);
+                showNotification('拒绝群聊邀请失败', 'error');
+            });
+        }
+
         // 加载好友列表
         function loadFriendsList() {
             // 重新加载页面以更新好友列表
