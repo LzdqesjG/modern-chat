@@ -108,6 +108,7 @@ if (empty($resource)) {
             'avatar' => ['upload'],
             'announcements' => ['get', 'mark_read'],
             'scan_login' => ['confirm', 'status', 'generate', 'update_status', 'get_ip'],
+            'sms' => ['send', 'verify'],
             'music' => ['list']
         ],
         'usage' => 'POST/GET with resource and action parameters'
@@ -316,7 +317,9 @@ try {
                     $username = trim($data['username'] ?? '');
                     $email = trim($data['email'] ?? '');
                     $password = $data['password'] ?? '';
-                    $phone = trim($data['phone'] ?? ''); // 支持手机号
+                    $phone = trim($data['phone'] ?? '');
+                    $sms_code = trim($data['sms_code'] ?? '');
+                    $sms_required = getConfig('sms_verify_required', false);
                     $ip_address = $_SERVER['REMOTE_ADDR'] ?? '';
                     
                     if (empty($username) || empty($email) || empty($password)) {
@@ -327,8 +330,38 @@ try {
                         response_error('请填写完整：' . implode('、', $hint) . '（若已填写仍报错，请检查网络或联系管理员）');
                     }
                     
+                    if ($sms_required || !empty($sms_code)) {
+                        if (empty($phone)) {
+                            response_error('请输入手机号');
+                        }
+                        if (empty($sms_code)) {
+                            response_error('请输入短信验证码');
+                        }
+                        if (!preg_match('/^1[3-9]\d{9}$/', $phone)) {
+                            response_error('请输入有效的手机号');
+                        }
+                        if (!isset($_SESSION['sms_code']) || !isset($_SESSION['sms_phone']) || !isset($_SESSION['sms_expire'])) {
+                            response_error('短信验证码已过期，请重新获取');
+                        }
+                        if ($_SESSION['sms_phone'] !== $phone) {
+                            response_error('手机号与接收验证码的手机号不一致');
+                        }
+                        if (time() > $_SESSION['sms_expire']) {
+                            response_error('短信验证码已过期，请重新获取');
+                        }
+                        if ($_SESSION['sms_code'] !== $sms_code) {
+                            response_error('短信验证码错误');
+                        }
+                        unset($_SESSION['sms_code']);
+                        unset($_SESSION['sms_expire']);
+                    }
+                    
                     $result = $user->register($username, $email, $password, $phone, $ip_address);
                     if ($result['success']) {
+                        $user->generateEncryptionKeys($result['user_id']);
+                        require_once $base_dir . '/Group.php';
+                        $group = new Group($conn);
+                        $group->addUserToAllUserGroups($result['user_id']);
                         response_success(['user_id' => $result['user_id']], '注册成功');
                     } else {
                         response_error($result['message']);
@@ -1363,6 +1396,89 @@ try {
                     
                 default:
                     response_error("Scan Login 模块不支持操作: $action");
+            }
+            break;
+        
+        // ------------------------------------------
+        // 短信验证模块 (SMS)
+        // ------------------------------------------
+        case 'sms':
+            switch ($action) {
+                case 'send':
+                    $phone = trim($data['phone'] ?? '');
+                    
+                    if (empty($phone) || !preg_match('/^1[3-9]\d{9}$/', $phone)) {
+                        response_error('请输入有效的手机号');
+                    }
+                    
+                    if (isset($_SESSION['last_sms_time']) && (time() - $_SESSION['last_sms_time'] < 60)) {
+                        $seconds_left = 60 - (time() - $_SESSION['last_sms_time']);
+                        response_error("请等待{$seconds_left}秒后再试");
+                    }
+                    
+                    require_once $base_dir . '/includes/AliSmsClient.php';
+                    
+                    $accessKeyId = getConfig('ali_sms_access_key_id', '');
+                    $accessKeySecret = getConfig('ali_sms_access_key_secret', '');
+                    
+                    if (empty($accessKeyId) || empty($accessKeySecret)) {
+                        response_error('短信服务未配置，请联系管理员');
+                    }
+                    
+                    $smsClient = new AliSmsClient($accessKeyId, $accessKeySecret);
+                    $code = str_pad(mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
+                    
+                    $result = $smsClient->sendVerifyCode($phone, 300, $code);
+                    
+                    if ($result['success']) {
+                        $_SESSION['sms_code'] = $code;
+                        $_SESSION['sms_phone'] = $phone;
+                        $_SESSION['sms_expire'] = time() + 300;
+                        $_SESSION['last_sms_time'] = time();
+                        
+                        response_success([], '验证码已发送，请在5分钟内输入');
+                    } else {
+                        response_error('发送失败: ' . ($result['error'] ?? '未知错误'));
+                    }
+                    break;
+                    
+                case 'verify':
+                    $phone = trim($data['phone'] ?? '');
+                    $code = trim($data['code'] ?? '');
+                    
+                    if (empty($phone) || !preg_match('/^1[3-9]\d{9}$/', $phone)) {
+                        response_error('请输入有效的手机号');
+                    }
+                    
+                    if (empty($code)) {
+                        response_error('请输入验证码');
+                    }
+                    
+                    if (!isset($_SESSION['sms_code']) || !isset($_SESSION['sms_phone']) || !isset($_SESSION['sms_expire'])) {
+                        response_error('验证码已过期，请重新获取');
+                    }
+                    
+                    if ($_SESSION['sms_phone'] !== $phone) {
+                        response_error('手机号与接收验证码的手机号不一致');
+                    }
+                    
+                    if (time() > $_SESSION['sms_expire']) {
+                        response_error('验证码已过期，请重新获取');
+                    }
+                    
+                    if ($_SESSION['sms_code'] !== $code) {
+                        response_error('验证码错误');
+                    }
+                    
+                    $_SESSION['sms_verified'] = true;
+                    $_SESSION['sms_verified_phone'] = $phone;
+                    $_SESSION['sms_verified_time'] = time();
+                    
+                    response_success([], '验证成功');
+                    break;
+                    
+                default:
+                    response_error("SMS 模块不支持操作: $action");
             }
             break;
         
