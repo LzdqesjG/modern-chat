@@ -3,6 +3,11 @@ require_once 'security_check.php';
 require_once 'config.php';
 require_once 'db.php';
 
+if ($conn === null) {
+    header('Location: login.php?error=' . urlencode('数据库连接失败，请稍后重试'));
+    exit;
+}
+
 // 确保必要字段存在
 try {
     // 检查users表是否有is_deleted字段
@@ -32,8 +37,8 @@ try {
     }
     
     // 确保IP相关表存�?    // 不要直接包含db.sql文件，这会导致SQL内容被输�?    
-    // 已通过install_tables.php脚本或createGroupTables函数创建了所需表
-    }
+    // 已通过install_tables.php脚本或createGroupTables函数创建了所需�?
+    } 
     catch (PDOException $e) {
     error_log("Field setup error: " . $e->getMessage());
 }
@@ -383,12 +388,48 @@ if (isset($_GET['scan_login']) && isset($_GET['token'])) {
                 }
                 
                 // 登录成功，将用户信息存储在会话中
-            $_SESSION['user_id'] = $user_info['id'];
-            $_SESSION['username'] = $user_info['username'];
-            $_SESSION['email'] = $user_info['email'];
-            $_SESSION['avatar'] = $user_info['avatar'];
-            $_SESSION['is_admin'] = isset($user_info['is_admin']) && $user_info['is_admin'];
-            $_SESSION['last_activity'] = time();
+        $_SESSION['user_id'] = $user_info['id'];
+        $_SESSION['username'] = $user_info['username'];
+        $_SESSION['email'] = $user_info['email'];
+        $_SESSION['avatar'] = $user_info['avatar'];
+        $_SESSION['is_admin'] = isset($user_info['is_admin']) && $user_info['is_admin'];
+        $_SESSION['last_activity'] = time();
+        
+        // 生成退出登录token
+        require_once 'User.php';
+        $user = new User($conn);
+        $logout_token = $user->generateLogoutToken($user_info['id']);
+        $_SESSION['logout_token'] = $logout_token;
+            
+            // 检查时间是否在早上11点到晚上11点之间，如果是则自动加入点歌群聊
+            $current_hour = date('H');
+            if ($current_hour >= 10 && $current_hour < 23) {
+                // 获取点歌群聊
+                $stmt = $conn->prepare("SELECT id FROM `groups` WHERE Music_all_group = 1");
+                $stmt->execute();
+                $music_group = $stmt->fetch();
+                
+                if ($music_group) {
+                    $music_group_id = $music_group['id'];
+                    $current_user_id = $user_info['id'];
+                    
+                    // 检查用户是否已经在点歌群聊中
+                    $stmt = $conn->prepare("SELECT id FROM group_members WHERE group_id = ? AND user_id = ?");
+                    $stmt->execute([$music_group_id, $current_user_id]);
+                    $is_in_group = $stmt->fetch();
+                    
+                    if (!$is_in_group) {
+                        // 将用户添加到点歌群聊
+                        try {
+                            $stmt = $conn->prepare("INSERT INTO group_members (group_id, user_id, role) VALUES (?, ?, 'member')");
+                            $stmt->execute([$music_group_id, $current_user_id]);
+                            error_log("User $current_user_id automatically joined music group $music_group_id");
+                        } catch (PDOException $e) {
+                            error_log("Failed to add user to music group: " . $e->getMessage());
+                        }
+                    }
+                }
+            }
             
             // 自动添加Admin管理员为好友并自动通过（如果还不是好友�?            
             require_once 'Friend.php';
@@ -588,6 +629,36 @@ $ch = curl_init();
             $_SESSION['avatar'] = $result['user']['avatar'];
             $_SESSION['is_admin'] = isset($result['user']['is_admin']) && $result['user']['is_admin'];
             $_SESSION['last_activity'] = time();
+            
+            // 检查时间是否在早上11点到晚上11点之间，如果是则自动加入点歌群聊
+            $current_hour = date('H');
+            if ($current_hour >= 11 && $current_hour < 23) {
+                // 获取点歌群聊
+                $stmt = $conn->prepare("SELECT id FROM `groups` WHERE Music_all_group = 1");
+                $stmt->execute();
+                $music_group = $stmt->fetch();
+                
+                if ($music_group) {
+                    $music_group_id = $music_group['id'];
+                    $current_user_id = $result['user']['id'];
+                    
+                    // 检查用户是否已经在点歌群聊中
+                    $stmt = $conn->prepare("SELECT id FROM group_members WHERE group_id = ? AND user_id = ?");
+                    $stmt->execute([$music_group_id, $current_user_id]);
+                    $is_in_group = $stmt->fetch();
+                    
+                    if (!$is_in_group) {
+                        // 将用户添加到点歌群聊
+                        try {
+                            $stmt = $conn->prepare("INSERT INTO group_members (group_id, user_id, role) VALUES (?, ?, 'member')");
+                            $stmt->execute([$music_group_id, $current_user_id]);
+                            error_log("User $current_user_id automatically joined music group $music_group_id");
+                        } catch (PDOException $e) {
+                            error_log("Failed to add user to music group: " . $e->getMessage());
+                        }
+                    }
+                }
+            }
             
             // 确保用户有加密密钥（如果该方法存在）
             if (method_exists($user, 'generateEncryptionKeys')) {

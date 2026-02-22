@@ -15,9 +15,15 @@ class User {
     // 用户注册
     public function register($username, $email, $password, $phone, $ip_address = '') {
         try {
-            // 检查用户名、邮箱是否已存在（兼容无 phone 列的表）
-            $sql = "SELECT username, email FROM users WHERE username = ? OR email = ?";
+            // 检查用户名、邮箱或手机号是否已存在
+            $sql = "SELECT username, email, phone FROM users WHERE username = ? OR email = ?";
             $params = [$username, $email];
+            
+            if (!empty($phone)) {
+                $sql .= " OR phone = ?";
+                $params[] = $phone;
+            }
+            
             $stmt = $this->conn->prepare($sql);
             $stmt->execute($params);
             
@@ -29,34 +35,25 @@ class User {
                 if ($existing['email'] === $email) {
                     return ['success' => false, 'message' => '邮箱已存在'];
                 }
-                return ['success' => false, 'message' => '用户名或邮箱已存在'];
+                if (!empty($phone) && $existing['phone'] === $phone) {
+                    return ['success' => false, 'message' => '手机号已注册'];
+                }
+                return ['success' => false, 'message' => '用户名、邮箱或手机号已存在'];
             }
             
             // 哈希密码
             $hashedPassword = password_hash($password, PASSWORD_DEFAULT, ['cost' => 12]);
             
-            // 插入新用户（兼容无 phone 列的表结构）
-            try {
-                $stmt = $this->conn->prepare("INSERT INTO users (username, email, password, phone) VALUES (?, ?, ?, ?)");
-                $stmt->execute([$username, $email, $hashedPassword, $phone]);
-            } catch (PDOException $e) {
-                if (strpos($e->getMessage(), 'phone') !== false) {
-                    $stmt = $this->conn->prepare("INSERT INTO users (username, email, password) VALUES (?, ?, ?)");
-                    $stmt->execute([$username, $email, $hashedPassword]);
-                } else {
-                    throw $e;
-                }
-            }
+            // 插入新用户
+            $stmt = $this->conn->prepare("INSERT INTO users (username, email, password, phone) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$username, $email, $hashedPassword, $phone]);
+            
             $user_id = $this->conn->lastInsertId();
             
-            // 将IP地址插入到IP注册记录表（表不存在时忽略）
+            // 将IP地址插入到IP注册记录表
             if (!empty($ip_address)) {
-                try {
-                    $stmt = $this->conn->prepare("INSERT INTO ip_registrations (user_id, ip_address) VALUES (?, ?)");
-                    $stmt->execute([$user_id, $ip_address]);
-                } catch (PDOException $e) {
-                    error_log("ip_registrations insert skip: " . $e->getMessage());
-                }
+                $stmt = $this->conn->prepare("INSERT INTO ip_registrations (user_id, ip_address) VALUES (?, ?)");
+                $stmt->execute([$user_id, $ip_address]);
             }
             
             return ['success' => true, 'message' => '注册成功', 'user_id' => $user_id];
@@ -141,7 +138,7 @@ class User {
     // 通过用户名或邮箱搜索用户
     public function searchUsers($search_term, $current_user_id) {
         try {
-            $stmt = $this->conn->prepare("SELECT id, username, avatar, status FROM users WHERE (username LIKE ? OR email LIKE ?) AND id != ?");
+            $stmt = $this->conn->prepare("SELECT id, username, email, avatar, status FROM users WHERE (username LIKE ? OR email LIKE ?) AND id != ?");
             $stmt->execute(["%$search_term%", "%$search_term%", $current_user_id]);
             return $stmt->fetchAll();
         } catch(PDOException $e) {
@@ -611,4 +608,89 @@ class User {
             return false;
         }
     }
+    
+    /**
+     * 生成退出登录token
+     * @param int $user_id 用户ID
+     * @return string 生成的token
+     */
+    public function generateLogoutToken($user_id) {
+        try {
+            // 检查logout_tokens表是否存在
+            $stmt = $this->conn->prepare("SHOW TABLES LIKE 'logout_tokens'");
+            $stmt->execute();
+            $table_exists = $stmt->fetch();
+            
+            if (!$table_exists) {
+                // 创建logout_tokens表
+                $create_table_sql = "CREATE TABLE IF NOT EXISTS logout_tokens (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    token VARCHAR(255) NOT NULL,
+                    expiry DATETIME NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )";
+                $this->conn->exec($create_table_sql);
+            }
+            
+            // 生成唯一token
+            $token = bin2hex(random_bytes(32));
+            $expiry = date('Y-m-d H:i:s', time() + 3600); // 1小时过期
+            
+            // 插入token记录
+            $stmt = $this->conn->prepare("INSERT INTO logout_tokens (user_id, token, expiry) VALUES (?, ?, ?)");
+            $stmt->execute([$user_id, $token, $expiry]);
+            
+            return $token;
+        } catch(PDOException $e) {
+            error_log("Generate Logout Token Error: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * 验证退出登录token
+     * @param int $user_id 用户ID
+     * @param string $token 要验证的token
+     * @return bool token是否有效
+     */
+    public function verifyLogoutToken($user_id, $token) {
+        try {
+            // 检查token是否存在且未过期
+            $stmt = $this->conn->prepare("SELECT id FROM logout_tokens WHERE user_id = ? AND token = ? AND expiry > NOW()");
+            $stmt->execute([$user_id, $token]);
+            $result = $stmt->fetch();
+            
+            if ($result) {
+                // token有效，立即删除（一次性使用）
+                $stmt = $this->conn->prepare("DELETE FROM logout_tokens WHERE id = ?");
+                $stmt->execute([$result['id']]);
+                return true;
+            }
+            
+            return false;
+        } catch(PDOException $e) {
+            error_log("Verify Logout Token Error: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * 检查IP注册次数
+     * @param string $ip_address IP地址
+     * @return int 注册次数
+     */
+    public function getIpRegistrationCount($ip_address) {
+        try {
+            $stmt = $this->conn->prepare("SELECT COUNT(*) as count FROM ip_registrations WHERE ip_address = ?");
+            $stmt->execute([$ip_address]);
+            $result = $stmt->fetch();
+            return $result ? $result['count'] : 0;
+        } catch(PDOException $e) {
+            error_log("Get IP Registration Count Error: " . $e->getMessage());
+            return 0;
+        }
+    }
 }
+

@@ -107,7 +107,7 @@ if (empty($resource)) {
             'file' => ['get'],
             'avatar' => ['upload'],
             'announcements' => ['get', 'mark_read'],
-            'scan_login' => ['confirm', 'status', 'generate', 'update_status', 'get_ip'],
+            'scan_login' => ['confirm', 'status', 'generate', 'scan', 'reject', 'get_ip'],
             'sms' => ['send', 'verify'],
             'music' => ['list']
         ],
@@ -1261,12 +1261,24 @@ try {
                     // 确认扫码登录
                     $qid = $data['qid'] ?? '';
                     $user_id = $data['user_id'] ?? 0;
+                    $username = $data['user'] ?? '';
                     
                     if (empty($qid)) {
                         response_error('登录标识不能为空');
                     }
+                    
+                    // 如果传递的是用户名，先查询用户ID
+                    if (empty($user_id) && !empty($username)) {
+                        $stmt = $conn->prepare("SELECT id FROM users WHERE username = ?");
+                        $stmt->execute([$username]);
+                        $user_data = $stmt->fetch();
+                        if ($user_data) {
+                            $user_id = $user_data['id'];
+                        }
+                    }
+                    
                     if (empty($user_id)) {
-                        response_error('用户ID不能为空');
+                        response_error('用户信息无效');
                     }
                     
                     // 检查qid是否存在且未过期
@@ -1333,26 +1345,43 @@ try {
                     }
                     break;
                     
-                case 'update_status':
-                    // 更新扫码状态（APP端调用）
+                case 'scan':
+                    // APP扫描二维码，更新状态为已扫描
                     $qid = $data['qid'] ?? '';
-                    $action_type = $data['action'] ?? '';
                     
                     if (empty($qid)) {
                         response_error('登录标识不能为空');
                     }
                     
-                    if ($action_type === 'scan') {
-                        // 更新为已扫描状态
-                        $stmt = $conn->prepare("UPDATE scan_login SET status = 'scanned' WHERE qid = ? AND status = 'pending'");
-                        $stmt->execute([$qid]);
-                    } else if ($action_type === 'reject') {
-                        // 更新为已拒绝状态
-                        $stmt = $conn->prepare("UPDATE scan_login SET status = 'rejected' WHERE qid = ?");
-                        $stmt->execute([$qid]);
+                    // 检查qid是否存在且未过期
+                    $stmt = $conn->prepare("SELECT * FROM scan_login WHERE qid = ? AND expire_at > NOW()");
+                    $stmt->execute([$qid]);
+                    $token_data = $stmt->fetch();
+                    
+                    if (!$token_data) {
+                        response_error('登录二维码无效或已过期');
                     }
                     
-                    response_success([], '状态更新成功');
+                    // 更新为已扫描状态
+                    $stmt = $conn->prepare("UPDATE scan_login SET status = 'scanned' WHERE qid = ? AND status = 'pending'");
+                    $stmt->execute([$qid]);
+                    
+                    response_success([], '扫描成功');
+                    break;
+                    
+                case 'reject':
+                    // APP拒绝登录
+                    $qid = $data['qid'] ?? '';
+                    
+                    if (empty($qid)) {
+                        response_error('登录标识不能为空');
+                    }
+                    
+                    // 更新为已拒绝状态
+                    $stmt = $conn->prepare("UPDATE scan_login SET status = 'rejected' WHERE qid = ?");
+                    $stmt->execute([$qid]);
+                    
+                    response_success([], '已拒绝登录');
                     break;
                     
                 case 'get_ip':

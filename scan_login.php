@@ -2,6 +2,12 @@
 require_once 'config.php';
 require_once 'db.php';
 
+if ($conn === null) {
+    header('Content-Type: application/json');
+    echo json_encode(['success' => false, 'message' => '数据库连接失败']);
+    exit;
+}
+
 // 确保scan_login表结构正确
 try {
     // 检查scan_login表是否有browser_fingerprint字段
@@ -83,6 +89,25 @@ function isBrowserBanned($conn, $fingerprint) {
     }
 }
 
+// 设备验证函数
+function validateDevice($app_type) {
+    $user_agent = $_SERVER['HTTP_USER_AGENT'];
+    
+    switch (strtolower($app_type)) {
+        case 'android':
+            return strpos(strtolower($user_agent), 'android') !== false;
+        case 'ios':
+            return (strpos(strtolower($user_agent), 'iphone') !== false || 
+                    strpos(strtolower($user_agent), 'ipad') !== false || 
+                    strpos(strtolower($user_agent), 'ios') !== false);
+        case 'harmonyos':
+            return strpos(strtolower($user_agent), 'harmonyos') !== false || 
+                   strpos(strtolower($user_agent), 'huawei') !== false;
+        default:
+            return false;
+    }
+}
+
 // 主处理逻辑
 if (isset($_GET['check_status'])) {
     // 检查登录状态
@@ -94,6 +119,17 @@ if (isset($_GET['check_status'])) {
     }
     
     try {
+        // 优化：添加qid索引（如果不存在）
+        $stmt = $conn->prepare("SHOW INDEX FROM scan_login WHERE Key_name = 'idx_qid'");
+        $stmt->execute();
+        $index_exists = $stmt->fetch();
+        
+        if (!$index_exists) {
+            $conn->exec("CREATE INDEX idx_qid ON scan_login(qid)");
+            error_log("Created index idx_qid on scan_login table");
+        }
+        
+        // 优化：使用索引查询，提高速度
         $sql = "SELECT * FROM scan_login WHERE qid = ?";
         $stmt = $conn->prepare($sql);
         $stmt->execute([$qid]);
@@ -120,20 +156,22 @@ if (isset($_GET['check_status'])) {
             
             echo json_encode(['status' => 'success', 'token' => $token, 'message' => '登录成功']);
         } elseif ($scan_record['status'] === 'scanned') {
-            echo json_encode(['status' => 'scanned', 'message' => '等待手机确认登录', 'debug' => '当前状态: ' . $scan_record['status']]);
+            echo json_encode(['status' => 'scanned', 'message' => '等待手机确认登录']);
         } elseif ($scan_record['status'] === 'rejected') {
             echo json_encode(['status' => 'rejected', 'message' => '手机端拒绝了登录请求，请重试']);
         } else {
-            echo json_encode(['status' => 'pending', 'message' => '等待扫描', 'debug' => '当前状态: ' . $scan_record['status']]);
+            echo json_encode(['status' => 'pending', 'message' => '等待扫描']);
         }
     } catch(PDOException $e) {
-        echo json_encode(['status' => 'error', 'message' => '检查登录状态失败: ' . $e->getMessage()]);
+        error_log('Check login status error: ' . $e->getMessage());
+        echo json_encode(['status' => 'error', 'message' => '检查登录状态失败']);
     }
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $qid = isset($_POST['qid']) ? $_POST['qid'] : '';
     $action = isset($_POST['action']) ? $_POST['action'] : '';
     $user = isset($_POST['user']) ? $_POST['user'] : '';
     $source = isset($_POST['source']) ? $_POST['source'] : '';
+    $app = isset($_POST['app']) ? $_POST['app'] : '';
     
     if (empty($qid) || empty($source)) {
         echo json_encode(['success' => false, 'message' => '参数错误: 缺少必要参数']);
@@ -143,6 +181,14 @@ if (isset($_GET['check_status'])) {
     if (!in_array($source, ['mobilechat.php', 'Newchatmobile.php'])) {
         echo json_encode(['success' => false, 'message' => '非法请求来源: ' . $source]);
         exit;
+    }
+    
+    // 验证设备类型
+    if (!empty($app)) {
+        if (!validateDevice($app)) {
+            echo json_encode(['success' => false, 'message' => '设备类型验证失败: ' . $app]);
+            exit;
+        }
     }
     
     try {
