@@ -550,7 +550,7 @@ require_once 'db.php';
         $password_request_message = '';
         
         // 检查是否有邮箱参数，用于显示忘记密码申请状态
-        if (isset($_GET['email']) && $conn !== null) {
+        if (isset($_GET['email'])) {
             $email = urldecode($_GET['email']);
             
             // 获取用户的忘记密码申请状态
@@ -668,13 +668,13 @@ require_once 'db.php';
         <!-- 扫码登录（仅在PC端显示） -->
         <?php if (!$is_mobile) { ?>
         <div class="login-method" id="scan-login">
-            <div class="qr-container" style="background-color: #f5f5f5; color: #333; padding: 30px; border-radius: 12px; text-align: center;">
-                <div id="qr-code" style="display: inline-block; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"></div>
-                <div class="qr-info" style="color: #333; margin-top: 15px;">
+            <div class="qr-container" style="background-color: black; color: white; padding: 30px; border-radius: 12px;">
+                <div id="qr-code"></div>
+                <div class="qr-info" style="color: white;">
                     <p>使用手机APP扫描二维码登录</p>
                     <p>有效期 <span class="countdown" id="countdown">5:00</span></p>
                 </div>
-                <div class="status-message status-pending" id="status-message" style="margin-top: 15px;">
+                <div class="status-message status-pending" id="status-message" style="background-color: rgba(255, 255, 255, 0.1); color: white; border-color: rgba(255, 255, 255, 0.2);">
                     等待手机确认...
                 </div>
             </div>
@@ -807,14 +807,14 @@ require_once 'db.php';
                     // 将浏览器指纹添加到二维码内容中
                     const qrContentWithFingerprint = data.qr_content + '&browser_fingerprint=' + encodeURIComponent(fingerprint);
                     
-                    // 使用标准格式生成二维码（黑码白底），提高APP扫码识别率
+                    // 在黑色背景下，使用白色作为二维码颜色，优化参数以提高识别率
                     QRCode.toCanvas(canvas, qrContentWithFingerprint, {
-                        width: 280, // 二维码尺寸
-                        margin: 4, // 边距
-                        errorCorrectionLevel: 'H', // 最高纠错级别
+                        width: 280, // 进一步增加二维码尺寸，提高清晰度
+                        margin: 8, // 进一步增加边距以提高识别率
+                        errorCorrectionLevel: 'H', // 使用最高纠错级别
                         color: {
-                            dark: '#000000', // 二维码颜色为黑色（标准格式）
-                            light: '#ffffff' // 背景颜色为白色（标准格式）
+                            dark: '#ffffff', // 二维码颜色为白色
+                            light: '#000000' // 背景颜色为黑色
                         }
                     }, function(error) {
                         if (error) {

@@ -2,12 +2,6 @@
 require_once 'config.php';
 require_once 'db.php';
 
-if ($conn === null) {
-    header('Content-Type: application/json');
-    echo json_encode(['success' => false, 'message' => '数据库连接失败']);
-    exit;
-}
-
 // 确保scan_login表结构正确
 try {
     // 检查scan_login表是否有browser_fingerprint字段
