@@ -188,7 +188,7 @@ if ($http_code === 200) {
 
     // 如果有错误，重定向回注册页面
     if (!empty($errors)) {
-        $error_message = implode('<br>', $errors);
+        $error_message = implode("\n", $errors);
         header("Location: register.php?error=" . urlencode($error_message));
         exit;
     }

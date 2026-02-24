@@ -19,7 +19,7 @@ if (file_exists($config_path)) {
 }
 
 if (isset($_GET['error'])) {
-    $error_message = htmlspecialchars($_GET['error']);
+    $error_message = nl2br(htmlspecialchars($_GET['error']));
 } else {
     $error_message = '';
 }

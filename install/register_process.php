@@ -8,6 +8,23 @@ require_once 'config.php';
 require_once 'db.php';
 require_once 'User.php';
 
+// 本地配置读取函数（因为 getConfig 函数的路径可能不正确）
+function getInstallConfig($key, $default = null) {
+    $config_path = dirname(__DIR__) . '/config/config.json';
+    static $config = null;
+    
+    if ($config === null) {
+        if (file_exists($config_path)) {
+            $config_content = file_get_contents($config_path);
+            $config = json_decode($config_content, true) ?: [];
+        } else {
+            $config = [];
+        }
+    }
+    
+    return isset($config[$key]) ? $config[$key] : $default;
+}
+
 // 检查是否是POST请求
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: register.php');
@@ -20,8 +37,8 @@ $user_ip = getUserIP();
 
 try {
     // 检查是否启用了IP注册限制
-    $restrict_registration = getConfig('Restrict_registration', false);
-    $restrict_registration_ip = getConfig('Restrict_registration_ip', 3);
+    $restrict_registration = getInstallConfig('Restrict_registration', false);
+    $restrict_registration_ip = getInstallConfig('Restrict_registration_ip', 3);
 
     if ($restrict_registration) {
         // 检查数据库连接是否成功
@@ -60,12 +77,18 @@ header("Location: register.php?error=" . urlencode("该IP地址已经有用户�
     $password = $_POST['password'];
     $confirm_password = $_POST['confirm_password'];
 
-    // 检查是否启用了短信验证码
-    $phone_sms_enabled = getConfig('phone_sms', false);
-    if ($phone_sms_enabled === 'true' || $phone_sms_enabled === true) {
-        $phone_sms_enabled = true;
-    } else {
-        $phone_sms_enabled = false;
+    // 检查是否启用了短信验证码（直接读取配置文件，因为 getConfig 函数路径可能不正确）
+    $phone_sms_enabled = false;
+    $config_path = dirname(__DIR__) . '/config/config.json';
+    if (file_exists($config_path)) {
+        $config_content = file_get_contents($config_path);
+        $config = json_decode($config_content, true);
+        $phone_sms_enabled = isset($config['phone_sms']) ? $config['phone_sms'] : false;
+        if ($phone_sms_enabled === 'true' || $phone_sms_enabled === true) {
+            $phone_sms_enabled = true;
+        } else {
+            $phone_sms_enabled = false;
+        }
     }
 
     // 手机号和短信验证码（仅当启用短信验证码时获取）
@@ -209,13 +232,13 @@ header("Location: register.php?error=" . urlencode("该IP地址已经有用户�
 
     // 如果有错误，重定向回注册页面
     if (!empty($errors)) {
-        $error_message = implode('<br>', $errors);
+        $error_message = implode("\n", $errors);
         header("Location: register.php?error=" . urlencode($error_message));
         exit;
     }
 
-    // 检查是否启用邮箱验�?    
-$email_verify = getConfig('email_verify', false);
+    // 检查是否启用邮箱验证    
+    $email_verify = getInstallConfig('email_verify', false);
 
     if ($email_verify) {
         // 判断邮箱是否为Gmail
@@ -223,9 +246,9 @@ $email_verify = getConfig('email_verify', false);
         
         if (!$is_gmail) {
             // 非Gmail邮箱，使用API验证
-            $api_url = getConfig('email_verify_api', 'https://api.nbhao.org/v1/email/verify');
-            $request_method = strtoupper(getConfig('email_verify_api_Request', 'POST'));
-            $verify_param = getConfig('email_verify_api_Verify_parameters', 'result');
+            $api_url = getInstallConfig('email_verify_api', 'https://api.nbhao.org/v1/email/verify');
+            $request_method = strtoupper(getInstallConfig('email_verify_api_Request', 'POST'));
+            $verify_param = getInstallConfig('email_verify_api_Verify_parameters', 'result');
             
             // 验证请求方法，只允许GET或POST
             if (!in_array($request_method, ['GET', 'POST'])) {

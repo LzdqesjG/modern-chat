@@ -440,7 +440,7 @@
         
         <?php
         if (isset($_GET['error'])) {
-            echo '<div class="error-message">' . htmlspecialchars($_GET['error']) . '</div>';
+            echo '<div class="error-message">' . nl2br(htmlspecialchars($_GET['error'])) . '</div>';
         }
         if (isset($_GET['success'])) {
             echo '<div class="success-message">' . htmlspecialchars($_GET['success']) . '</div>';
