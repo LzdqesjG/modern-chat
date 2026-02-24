@@ -9,7 +9,7 @@ if (!defined('SECURITY_HELPER_LOADED')) {
             header('X-XSS-Protection: 1; mode=block');
             header('Referrer-Policy: strict-origin-when-cross-origin');
             if ($enable_csp) {
-                header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://static.geetest.com https://static2.geetest.com https://static3.geetest.com; style-src 'self' 'unsafe-inline' https://static.geetest.com https://static2.geetest.com; img-src 'self' data: blob: https://static.geetest.com https://static2.geetest.com; font-src 'self' data:; connect-src 'self' https://gcaptcha4.geetest.com https://api.geetest.com https://static.geetest.com; frame-src 'self' blob: https://player.bilibili.com https://www.youtube.com; worker-src 'self' blob:; media-src 'self' blob:; object-src 'none';");
+                header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://static.geetest.com https://static2.geetest.com https://static3.geetest.com https://gcaptcha4.geetest.com https://gcaptcha4.geevisit.com https://gcaptcha4.gsensebot.com; style-src 'self' 'unsafe-inline' https://static.geetest.com https://static2.geetest.com; img-src 'self' data: blob: https://static.geetest.com https://static2.geetest.com; font-src 'self' data:; connect-src 'self' https://gcaptcha4.geetest.com https://gcaptcha4.geevisit.com https://gcaptcha4.gsensebot.com https://api.geetest.com https://static.geetest.com; frame-src 'self' blob: https://player.bilibili.com https://www.youtube.com; worker-src 'self' blob:; media-src 'self' blob:; object-src 'none';");
             }
             header('Permissions-Policy: geolocation=(), microphone=(), camera=()');
         }

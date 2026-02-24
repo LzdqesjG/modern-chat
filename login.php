@@ -531,8 +531,6 @@ require_once 'db.php';
             }
         }
     </style>
-    <!-- 极验验证码JS库 -->
-    <script src="https://static.geetest.com/v4/gt4.js"></script>
 </head>
 <body>
     <div class="container">
@@ -709,7 +707,9 @@ require_once 'db.php';
             </div>
         </div>
     </div>
-    
+
+    <!-- 极验验证码JS库 -->
+    <script src="https://static.geetest.com/v4/gt4.js"></script>
     <script src="./js/qrcode.min.js"></script>
     <script>
         // 浏览器指纹生成功能
