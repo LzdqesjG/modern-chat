@@ -1,6 +1,47 @@
 <?php
 // 连接数据库
 require_once 'db.php';
+
+// 检查安全状态
+function checkSafetyStatus() {
+    $safety_lock_file = 'Safety_locked.lock';
+    $distinction_file = 'distinction_ver.json';
+    
+    // 如果安全锁已存在，直接返回锁定状态
+    if (file_exists($safety_lock_file)) {
+        return true;
+    }
+    
+    // 检查本地版本文件是否存在
+    if (!file_exists($distinction_file)) {
+        return false;
+    }
+    
+    // 获取本地版本信息
+    $local_version = json_decode(file_get_contents($distinction_file), true);
+    if (!$local_version || !isset($local_version['version'])) {
+        return false;
+    }
+    
+    // 获取远程版本信息
+    $distinctionVerUrl = 'https://updata.sunaookami-shiroko.top/distinction_ver.json';
+    $distinctionVerJson = @file_get_contents($distinctionVerUrl);
+    
+    if ($distinctionVerJson !== false) {
+        $distinctionVerData = json_decode($distinctionVerJson, true);
+        if ($distinctionVerData && isset($distinctionVerData['version'])) {
+            // 版本不一致时创建安全锁
+            if ($local_version['version'] !== $distinctionVerData['version']) {
+                file_put_contents($safety_lock_file, '');
+                return true;
+            }
+        }
+    }
+    
+    return false;
+}
+
+$is_safety_locked = checkSafetyStatus();
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -514,6 +555,107 @@ require_once 'db.php';
             margin: 10px 0;
         }
         
+        /* 安全锁弹窗样式 */
+        .safety-lock-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .safety-lock-overlay.active {
+            display: flex;
+            animation: fadeIn 0.3s ease-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .safety-lock-modal {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.4s ease-out;
+        }
+        
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .safety-lock-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+            color: #ff4d4f;
+        }
+        
+        .safety-lock-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 16px;
+        }
+        
+        .safety-lock-message {
+            font-size: 16px;
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+        
+        .safety-lock-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+        
+        .safety-lock-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .safety-lock-btn-primary {
+            background: linear-gradient(135deg, #ff4d4f 0%, #ff7875 100%);
+            color: white;
+        }
+        
+        .safety-lock-btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(255, 77, 79, 0.4);
+        }
+        
+        .safety-lock-btn-secondary {
+            background: #f5f5f5;
+            color: #666;
+        }
+        
+        .safety-lock-btn-secondary:hover {
+            background: #e0e0e0;
+        }
+        
         @media (max-width: 500px) {
             .container {
                 margin: 20px;
@@ -529,8 +671,22 @@ require_once 'db.php';
                 align-items: flex-start;
                 gap: 10px;
             }
+            
+            .safety-lock-modal {
+                padding: 30px 20px;
+            }
+            
+            .safety-lock-buttons {
+                flex-direction: column;
+            }
+            
+            .safety-lock-btn {
+                width: 100%;
+            }
         }
     </style>
+    <!-- 极验验证码JS库 -->
+    <script src="gt4.js"></script>
 </head>
 <body>
     <div class="container">
@@ -640,6 +796,9 @@ require_once 'db.php';
                 
                 <!-- 浏览器指纹隐藏字段 -->
                 <input type="hidden" name="browser_fingerprint" id="browser_fingerprint">
+                
+                <!-- 安全锁状态隐藏字段 -->
+                <input type="hidden" name="safety_locked" value="<?php echo $is_safety_locked ? '1' : '0'; ?>">
 
                 <!-- 协议同意复选框 -->
                 <div class="agreement-checkbox">
@@ -707,11 +866,54 @@ require_once 'db.php';
             </div>
         </div>
     </div>
-
-    <!-- 极验验证码JS库 -->
-    <script src="https://static.geetest.com/v4/gt4.js"></script>
+    
+    <!-- 安全锁弹窗 -->
+    <div class="safety-lock-overlay" id="safetyLockModal">
+        <div class="safety-lock-modal">
+            <div class="safety-lock-icon">🔒</div>
+            <div class="safety-lock-title">安全系统已锁定</div>
+            <div class="safety-lock-message">
+                系统检测到版本不一致，已自动锁定以保障安全。<br>
+                只有管理员账号可以登录系统进行更新操作。
+            </div>
+            <div class="safety-lock-buttons">
+                <button class="safety-lock-btn safety-lock-btn-primary" onclick="continueLogin()">继续登录</button>
+                <button class="safety-lock-btn safety-lock-btn-secondary" onclick="closeSafetyLock()">关闭</button>
+            </div>
+        </div>
+    </div>
+    
     <script src="./js/qrcode.min.js"></script>
     <script>
+        // 安全锁状态
+        const isSafetyLocked = <?php echo $is_safety_locked ? 'true' : 'false'; ?>;
+        
+        // 页面加载时检查安全锁
+        document.addEventListener('DOMContentLoaded', () => {
+            if (isSafetyLocked) {
+                showSafetyLock();
+            }
+            
+            if (document.getElementById('scan-login').classList.contains('active')) {
+                initScanLogin();
+            }
+        });
+        
+        // 显示安全锁弹窗
+        function showSafetyLock() {
+            document.getElementById('safetyLockModal').classList.add('active');
+        }
+        
+        // 关闭安全锁弹窗
+        function closeSafetyLock() {
+            document.getElementById('safetyLockModal').classList.remove('active');
+        }
+        
+        // 继续登录
+        function continueLogin() {
+            document.getElementById('safetyLockModal').classList.remove('active');
+        }
+        
         // 浏览器指纹生成功能
         function generateBrowserFingerprint() {
             // 收集浏览器信息
@@ -807,16 +1009,38 @@ require_once 'db.php';
                     // 将浏览器指纹添加到二维码内容中
                     const qrContentWithFingerprint = data.qr_content + '&browser_fingerprint=' + encodeURIComponent(fingerprint);
                     
-                    // 在黑色背景下，使用白色作为二维码颜色，优化参数以提高识别率
-                    QRCode.toCanvas(canvas, qrContentWithFingerprint, {
-                        width: 280, // 进一步增加二维码尺寸，提高清晰度
-                        margin: 8, // 进一步增加边距以提高识别率
-                        errorCorrectionLevel: 'H', // 使用最高纠错级别
-                        color: {
-                            dark: '#ffffff', // 二维码颜色为白色
-                            light: '#000000' // 背景颜色为黑色
+                    // 从配置文件获取二维码颜色设置，默认为黑色
+            let qrColor = '#ffffff'; // 默认二维码颜色为白色
+            let bgColor = '#000000'; // 默认背景颜色为黑色
+            
+            // 尝试获取配置的二维码颜色
+            try {
+                // 发送请求获取配置
+                fetch('get_config.php?key=QR_code_color')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.value === 'white') {
+                            qrColor = '#000000'; // 白色背景下使用黑色二维码
+                            bgColor = '#ffffff'; // 背景颜色为白色
                         }
-                    }, function(error) {
+                    })
+                    .catch(error => {
+                        console.error('获取二维码颜色配置失败:', error);
+                    });
+            } catch (error) {
+                console.error('获取二维码颜色配置失败:', error);
+            }
+            
+            // 根据配置生成二维码
+            QRCode.toCanvas(canvas, qrContentWithFingerprint, {
+                width: 280, // 进一步增加二维码尺寸，提高清晰度
+                margin: 8, // 进一步增加边距以提高识别率
+                errorCorrectionLevel: 'H', // 使用最高纠错级别
+                color: {
+                    dark: qrColor, // 二维码颜色
+                    light: bgColor // 背景颜色
+                }
+            }, function(error) {
                         if (error) {
                             console.error('生成二维码失败:', error);
                             qrCode.innerHTML = '<p style="color: #ff4757;">生成二维码失败，请重试</p>';
@@ -1010,6 +1234,15 @@ require_once 'db.php';
                 const fingerprint = await generateBrowserFingerprint();
                 fingerprintInput.value = fingerprint;
             }
+            
+            // 安全锁状态下的验证
+            if (isSafetyLocked) {
+                const email = document.getElementById('email').value;
+                // 在安全锁状态下，需要验证用户是否为管理员
+                // 这里只做前端提示，实际验证在后端login_process.php中进行
+                alert('系统处于安全锁定状态，只有管理员账号可以登录。');
+            }
+            
             return true;
         }
         

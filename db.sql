@@ -71,8 +71,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     friend_id INT NOT NULL,
     last_message_id INT NULL,
     unread_count INT DEFAULT 0,
-    is_pinned BOOLEAN DEFAULT FALSE,
-    pinned_at TIMESTAMP NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (friend_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -103,8 +101,6 @@ CREATE TABLE IF NOT EXISTS `groups` (
     creator_id INT NOT NULL,
     owner_id INT NOT NULL,
     all_user_group INT DEFAULT 0,
-    is_pinned BOOLEAN DEFAULT FALSE,
-    pinned_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
@@ -115,7 +111,7 @@ CREATE TABLE IF NOT EXISTS group_members (
     id INT AUTO_INCREMENT PRIMARY KEY,
     group_id INT NOT NULL,
     user_id INT NOT NULL,
-    role ENUM('admin', 'member') DEFAULT 'member',
+    role ENUM('Master', 'admin', 'member') DEFAULT 'member',
     joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (group_id) REFERENCES `groups`(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -471,3 +467,6 @@ CREATE INDEX idx_announcements_is_active ON announcements(is_active);
 CREATE INDEX idx_announcements_created_at ON announcements(created_at);
 CREATE INDEX idx_user_announcement_read_user_id ON user_announcement_read(user_id);
 CREATE INDEX idx_user_announcement_read_announcement_id ON user_announcement_read(announcement_id);
+
+-- 修改groups表，添加Music_all_group字段
+ALTER TABLE `groups` ADD COLUMN Music_all_group INT DEFAULT 0 AFTER is_muted;

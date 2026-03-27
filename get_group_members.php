@@ -53,23 +53,63 @@ try {
         exit;
     }
     
+    // 获取群聊信息
+    $stmt = $conn->prepare("SELECT owner_id, all_user_group FROM groups WHERE id = ?");
+    $stmt->execute([$group_id]);
+    $group_info = $stmt->fetch();
+    
     // 获取群聊成员列表
     $members = $group->getGroupMembers($group_id);
+    
+    // 获取当前用户在群中的角色
+    $current_user_role = 'member';
+    if ($group_info['owner_id'] == $user_id) {
+        $current_user_role = 'Master';
+    } else {
+        // 检查是否是管理员
+        foreach ($members as $member) {
+            if (isset($member['id']) && $member['id'] == $user_id) {
+                if (isset($member['role'])) {
+                    $current_user_role = $member['role'];
+                } elseif (isset($member['is_admin']) && $member['is_admin']) {
+                    $current_user_role = 'admin';
+                }
+                break;
+            }
+        }
+    }
     
     // 处理成员数据，只返回需要的字段
     $result = [];
     foreach ($members as $member) {
-        $result[] = [
-            'id' => $member['user_id'],
-            'username' => $member['username'],
-            'nickname' => $member['nickname'] ?? '',
-            'avatar' => $member['avatar'] ?? ''
-        ];
+        if (isset($member['id'])) {
+            // 检查是否是好友
+            $stmt = $conn->prepare("SELECT status FROM friends 
+                                   WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)");
+            $stmt->execute([$user_id, $member['id'], $member['id'], $user_id]);
+            $friendship = $stmt->fetch();
+            $friendship_status = $friendship ? $friendship['status'] : 'none';
+            
+            $result[] = [
+                'id' => $member['id'],
+                'username' => $member['username'] ?? '',
+                'nickname' => $member['nickname'] ?? '',
+                'avatar' => $member['avatar'] ?? '',
+                'role' => $member['role'] ?? 'member',
+                'status' => $member['status'] ?? '',
+                'last_active' => $member['last_active'] ?? '',
+                'friendship_status' => $friendship_status
+            ];
+        }
     }
     
     echo json_encode([
         'success' => true,
-        'members' => $result
+        'members' => $result,
+        'group_owner_id' => $group_info['owner_id'],
+        'all_user_group' => $group_info['all_user_group'],
+        'current_user_id' => $user_id,
+        'current_user_role' => $current_user_role
     ]);
 } catch (Exception $e) {
     // 捕获所有异常并返回错误信息

@@ -409,6 +409,33 @@ function importDatabase() {
  */
 function completeInstall() {
     try {
+        // 获取当前域名
+        $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $script_dir = dirname($_SERVER['SCRIPT_NAME'] ?? '/');
+        $base_url = $protocol . '://' . $host . $script_dir . '/..';
+        $domain = $protocol . '://' . $host;
+
+        // 修改config/config.json，添加CORS配置
+        $config_file = dirname(__DIR__) . '/config/config.json';
+        if (file_exists($config_file)) {
+            $config = json_decode(file_get_contents($config_file), true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $config['cors_allowed_origins'] = ["http://localhost", "http://127.0.0.1", $domain];
+                file_put_contents($config_file, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            }
+        }
+
+        // 修改config.php中的APP_URL
+        $config_php_file = dirname(__DIR__) . '/config.php';
+        if (file_exists($config_php_file)) {
+            $content = file_get_contents($config_php_file);
+            $new_content = preg_replace('/define\(\'APP_URL\',\s*\'[^\']*\'\);/', "define('APP_URL', '$base_url');", $content);
+            if ($new_content !== $content) {
+                file_put_contents($config_php_file, $new_content);
+            }
+        }
+
         // 创建安装锁
         $success = InstallCommon::createInstallLock();
 
@@ -417,7 +444,9 @@ function completeInstall() {
         }
 
         InstallCommon::jsonResponse(true, '安装完成', [
-            'lock_created' => true
+            'lock_created' => true,
+            'app_url' => $base_url,
+            'cors_origins' => ["http://localhost", "http://127.0.0.1", $domain]
         ]);
     } catch (Throwable $e) {
         InstallCommon::jsonResponse(false, '安装失败: ' . $e->getMessage());
@@ -481,6 +510,17 @@ function sendTestSms() {
             InstallCommon::jsonResponse(false, '无法写入 send_sms.php，请检查权限');
         }
         
+        // 2. 更新 config.json 中的密钥
+        $configFile = dirname(__DIR__) . '/config/config.json';
+        if (file_exists($configFile)) {
+            $config = json_decode(file_get_contents($configFile), true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $config['ali_sms_access_key_id'] = $accessKeyId;
+                $config['ali_sms_access_key_secret'] = $accessKeySecret;
+                file_put_contents($configFile, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            }
+        }
+        
         // 2. 调用 API 发送短信
         // 优先引入 vendor/autoload.php
         $vendorAutoload = dirname(__DIR__) . '/vendor/autoload.php';
@@ -531,14 +571,16 @@ function sendTestSms() {
         }
         
         if (isset($result['success']) && $result['success']) {
-            // 保存验证码到 Session
-            if (session_status() === PHP_SESSION_NONE) {
-                session_start();
-            }
-            $_SESSION['install_sms_code'] = $code;
-            $_SESSION['install_sms_phone'] = $phone;
-            
-            InstallCommon::jsonResponse(true, '发送成功');
+            // 保存验证码和密钥到 Session
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+        $_SESSION['install_sms_code'] = $code;
+        $_SESSION['install_sms_phone'] = $phone;
+        $_SESSION['install_sms_access_key_id'] = $accessKeyId;
+        $_SESSION['install_sms_access_key_secret'] = $accessKeySecret;
+        
+        InstallCommon::jsonResponse(true, '发送成功');
         } else {
             InstallCommon::jsonResponse(false, '发送失败: ' . ($result['error'] ?? $result['message'] ?? '未知错误'));
         }
@@ -569,11 +611,18 @@ function verifyTestSms() {
         }
         
         // 验证通过，更新 config.json
-        $configFile = dirname(__DIR__) . '/../config/config.json';
+        $configFile = dirname(__DIR__) . '/config/config.json';
         if (file_exists($configFile)) {
             $config = json_decode(file_get_contents($configFile), true);
             if (json_last_error() === JSON_ERROR_NONE) {
                 $config['phone_sms'] = true;
+                // 确保access_key_id和access_key_secret也被保存
+                if (isset($_SESSION['install_sms_access_key_id'])) {
+                    $config['ali_sms_access_key_id'] = $_SESSION['install_sms_access_key_id'];
+                }
+                if (isset($_SESSION['install_sms_access_key_secret'])) {
+                    $config['ali_sms_access_key_secret'] = $_SESSION['install_sms_access_key_secret'];
+                }
                 file_put_contents($configFile, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
             }
         }
@@ -631,6 +680,13 @@ function skipSmsConfig() {
                      InstallCommon::jsonResponse(false, "源文件 $file 不存在且目标文件也不存在 (源: $source)");
                 }
             }
+        }
+        
+        // 3. 删除send_sms.php文件（如果存在）
+        $smsFile = dirname(__DIR__) . '/send_sms.php';
+        if (file_exists($smsFile)) {
+            @chmod($smsFile, 0777);
+            unlink($smsFile);
         }
         
         // 2. 确保 config.json 中 phone_sms 为 false

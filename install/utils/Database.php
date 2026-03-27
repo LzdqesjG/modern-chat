@@ -302,23 +302,16 @@ class InstallDatabase {
 
         try {
             // 哈希密码
-            // 注意：这里假设安装环境支持password_hash，PHP 5.5+
             $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
             
-            // 检查用户是否存在
-            $stmt = $this->pdo->prepare("SELECT id FROM users WHERE username = ? OR email = ?");
+            // 为了避免唯一键冲突（如用户名匹配一个用户，邮箱匹配另一个用户）
+            // 先删除所有冲突的用户
+            $stmt = $this->pdo->prepare("DELETE FROM users WHERE username = ? OR email = ?");
             $stmt->execute([$username, $email]);
-            $user = $stmt->fetch(PDO::FETCH_ASSOC);
             
-            if ($user) {
-                // 更新现有用户
-                $stmt = $this->pdo->prepare("UPDATE users SET password = ?, email = ?, is_admin = 1 WHERE id = ?");
-                $stmt->execute([$hashedPassword, $email, $user['id']]);
-            } else {
-                // 创建新用户
-                $stmt = $this->pdo->prepare("INSERT INTO users (username, email, password, is_admin, avatar, status) VALUES (?, ?, ?, 1, 'default_avatar.png', 'offline')");
-                $stmt->execute([$username, $email, $hashedPassword]);
-            }
+            // 创建新用户
+            $stmt = $this->pdo->prepare("INSERT INTO users (username, email, password, is_admin, avatar, status) VALUES (?, ?, ?, 1, 'default_avatar.png', 'offline')");
+            $stmt->execute([$username, $email, $hashedPassword]);
             
             return true;
         } catch (PDOException $e) {

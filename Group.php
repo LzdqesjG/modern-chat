@@ -31,15 +31,30 @@ class Group {
             $stmt->execute([$name, $creator_id, $creator_id]);
             $group_id = $this->conn->lastInsertId();
             
-            // 添加创建者为成员和群主
-            $stmt = $this->conn->prepare("INSERT INTO group_members (group_id, user_id, role) VALUES (?, ?, ?)");
-            $stmt->execute([$group_id, $creator_id, 'admin']);
+            // 检查表结构
+            $stmt = $this->conn->prepare("SHOW COLUMNS FROM group_members LIKE 'is_admin'");
+            $stmt->execute();
+            $is_admin_exists = $stmt->fetch();
+            
+            // 添加创建者为成员和群主（Master）
+            if ($is_admin_exists) {
+                $stmt = $this->conn->prepare("INSERT INTO group_members (group_id, user_id, is_admin) VALUES (?, ?, ?)");
+                $stmt->execute([$group_id, $creator_id, 1]);
+            } else {
+                $stmt = $this->conn->prepare("INSERT INTO group_members (group_id, user_id, role) VALUES (?, ?, ?)");
+                $stmt->execute([$group_id, $creator_id, 'Master']);
+            }
             
             // 添加其他成员
             foreach ($member_ids as $member_id) {
                 if ($member_id != $creator_id) {
-                    $stmt = $this->conn->prepare("INSERT INTO group_members (group_id, user_id) VALUES (?, ?)");
-                    $stmt->execute([$group_id, $member_id]);
+                    if ($is_admin_exists) {
+                        $stmt = $this->conn->prepare("INSERT INTO group_members (group_id, user_id) VALUES (?, ?)");
+                        $stmt->execute([$group_id, $member_id]);
+                    } else {
+                        $stmt = $this->conn->prepare("INSERT INTO group_members (group_id, user_id, role) VALUES (?, ?, ?)");
+                        $stmt->execute([$group_id, $member_id, 'member']);
+                    }
                 }
             }
             
@@ -104,25 +119,26 @@ class Group {
         $safeFields = "u.id, u.username, u.avatar, u.status, u.last_active";
         
         if ($group_info && $group_info['all_user_group'] == 1) {
-            // 全员群聊，返回所有用户，并正确标记管理员
+            // 全员群聊，返回所有用户，并正确标记角色
             if ($is_admin_exists) {
                 // 表结构中有is_admin字段
                 $stmt = $this->conn->prepare("SELECT {$safeFields}, 
                                                 CASE 
-                                                    WHEN u.id = ? THEN 1
-                                                    WHEN gm.is_admin = 1 THEN 1
-                                                    ELSE 0
-                                                END as is_admin 
+                                                    WHEN u.id = ? THEN 'Master'
+                                                    WHEN gm.is_admin = 1 THEN 'admin'
+                                                    ELSE 'member'
+                                                END as role 
                                              FROM users u 
                                              LEFT JOIN group_members gm ON u.id = gm.user_id AND gm.group_id = ?");
             } else {
                 // 表结构中有role字段
                 $stmt = $this->conn->prepare("SELECT {$safeFields}, 
                                                 CASE 
-                                                    WHEN u.id = ? THEN 1
-                                                    WHEN gm.role = 'admin' THEN 1
-                                                    ELSE 0
-                                                END as is_admin 
+                                                    WHEN u.id = ? THEN 'Master'
+                                                    WHEN gm.role = 'Master' THEN 'Master'
+                                                    WHEN gm.role = 'admin' THEN 'admin'
+                                                    ELSE 'member'
+                                                END as role 
                                              FROM users u 
                                              LEFT JOIN group_members gm ON u.id = gm.user_id AND gm.group_id = ?");
             }
@@ -131,15 +147,25 @@ class Group {
         } else {
             // 普通群聊，返回group_members表中的成员
             if ($is_admin_exists) {
-                $stmt = $this->conn->prepare("SELECT {$safeFields}, gm.is_admin FROM users u 
+                $stmt = $this->conn->prepare("SELECT {$safeFields}, 
+                                                CASE 
+                                                    WHEN u.id = ? THEN 'Master'
+                                                    WHEN gm.is_admin = 1 THEN 'admin'
+                                                    ELSE 'member'
+                                                END as role 
+                                             FROM users u 
                                              JOIN group_members gm ON u.id = gm.user_id 
                                              WHERE gm.group_id = ?");
             } else {
-                $stmt = $this->conn->prepare("SELECT {$safeFields}, (gm.role = 'admin') as is_admin FROM users u 
+                $stmt = $this->conn->prepare("SELECT {$safeFields}, gm.role FROM users u 
                                              JOIN group_members gm ON u.id = gm.user_id 
                                              WHERE gm.group_id = ?");
             }
-            $stmt->execute([$group_id]);
+            if ($is_admin_exists) {
+                $stmt->execute([$owner_id, $group_id]);
+            } else {
+                $stmt->execute([$group_id]);
+            }
             return $stmt->fetchAll();
         }
     }
@@ -185,7 +211,28 @@ class Group {
      * @param bool $is_admin 是否为管理员
      * @return bool 是否成功
      */
-    public function setAdmin($group_id, $user_id, $is_admin = true) {
+    public function setAdmin($group_id, $user_id, $operator_id, $is_admin = true) {
+        // 检查操作者权限：只有Master可以设置管理员
+        $stmt = $this->conn->prepare("SELECT g.owner_id, gm.role FROM groups g 
+                                     LEFT JOIN group_members gm ON g.id = gm.group_id AND gm.user_id = ? 
+                                     WHERE g.id = ?");
+        $stmt->execute([$operator_id, $group_id]);
+        $result = $stmt->fetch();
+        
+        // 获取群信息
+        $group_info = $this->getGroupInfo($group_id);
+        $owner_id = $group_info['owner_id'];
+        
+        // 只有群主（Master）可以设置管理员
+        if (!$result || ($result['role'] !== 'Master' && $operator_id !== $owner_id)) {
+            return ['success' => false, 'message' => '权限不足，只有群主可以设置管理员'];
+        }
+        
+        // 不能修改群主的角色
+        if ($user_id == $owner_id) {
+            return ['success' => false, 'message' => '不能修改群主的角色'];
+        }
+        
         // 兼容两种表结构
         $stmt = $this->conn->prepare("SHOW COLUMNS FROM group_members LIKE 'is_admin'");
         $stmt->execute();
@@ -204,17 +251,28 @@ class Group {
             
             // 管理员数量不能超过9个（不包括群主）
             if ($admin_count >= 9) {
-                return false;
+                return ['success' => false, 'message' => '管理员数量已达上限（最多9个）'];
             }
         }
         
-        if ($is_admin_exists) {
-            $stmt = $this->conn->prepare("UPDATE group_members SET is_admin = ? WHERE group_id = ? AND user_id = ?");
-            return $stmt->execute([$is_admin, $group_id, $user_id]);
-        } else {
-            $role = $is_admin ? 'admin' : 'member';
-            $stmt = $this->conn->prepare("UPDATE group_members SET role = ? WHERE group_id = ? AND user_id = ?");
-            return $stmt->execute([$role, $group_id, $user_id]);
+        try {
+            if ($is_admin_exists) {
+                $stmt = $this->conn->prepare("UPDATE group_members SET is_admin = ? WHERE group_id = ? AND user_id = ?");
+                $result = $stmt->execute([$is_admin, $group_id, $user_id]);
+            } else {
+                $role = $is_admin ? 'admin' : 'member';
+                $stmt = $this->conn->prepare("UPDATE group_members SET role = ? WHERE group_id = ? AND user_id = ?");
+                $result = $stmt->execute([$role, $group_id, $user_id]);
+            }
+            
+            if ($result) {
+                return ['success' => true, 'message' => $is_admin ? '设置管理员成功' : '取消管理员成功'];
+            } else {
+                return ['success' => false, 'message' => '操作失败'];
+            }
+        } catch (PDOException $e) {
+            error_log("Set admin error: " . $e->getMessage());
+            return ['success' => false, 'message' => '操作失败'];
         }
     }
     
@@ -226,6 +284,11 @@ class Group {
      * @return bool 是否成功
      */
     public function transferOwnership($group_id, $current_owner_id, $new_owner_id) {
+        // 禁止转让给自己
+        if ($new_owner_id == $current_owner_id) {
+            return false;
+        }
+        
         // 验证当前用户是群主
         $stmt = $this->conn->prepare("SELECT owner_id FROM groups WHERE id = ? AND owner_id = ?");
         $stmt->execute([$group_id, $current_owner_id]);
@@ -247,9 +310,30 @@ class Group {
             $stmt = $this->conn->prepare("UPDATE groups SET owner_id = ? WHERE id = ?");
             $stmt->execute([$new_owner_id, $group_id]);
             
-            // 设置新群主为管理员
-            $stmt = $this->conn->prepare("UPDATE group_members SET is_admin = 1 WHERE group_id = ? AND user_id = ?");
-            $stmt->execute([$group_id, $new_owner_id]);
+            // 设置新群主为Master，原群主为普通成员
+            $stmt = $this->conn->prepare("SHOW COLUMNS FROM group_members LIKE 'is_admin'");
+            $stmt->execute();
+            $is_admin_exists = $stmt->fetch();
+            
+            if ($is_admin_exists) {
+                // 使用is_admin字段的表结构
+                // 设置新群主为管理员
+                $stmt = $this->conn->prepare("UPDATE group_members SET is_admin = 1 WHERE group_id = ? AND user_id = ?");
+                $stmt->execute([$group_id, $new_owner_id]);
+                
+                // 设置原群主为普通成员
+                $stmt = $this->conn->prepare("UPDATE group_members SET is_admin = 0 WHERE group_id = ? AND user_id = ?");
+                $stmt->execute([$group_id, $current_owner_id]);
+            } else {
+                // 使用role字段的表结构
+                // 设置新群主为Master
+                $stmt = $this->conn->prepare("UPDATE group_members SET role = 'Master' WHERE group_id = ? AND user_id = ?");
+                $stmt->execute([$group_id, $new_owner_id]);
+                
+                // 设置原群主为普通成员
+                $stmt = $this->conn->prepare("UPDATE group_members SET role = 'member' WHERE group_id = ? AND user_id = ?");
+                $stmt->execute([$group_id, $current_owner_id]);
+            }
             
             $this->conn->commit();
             return true;
@@ -310,11 +394,11 @@ class Group {
         try {
             if ($file_path) {
                 // 发送文件消息，包含 file_type、audio_duration（语音时长秒）
-                $stmt = $this->conn->prepare("INSERT INTO group_messages (group_id, sender_id, content, file_path, file_name, file_size, file_type, audio_duration) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt = $this->conn->prepare("INSERT INTO group_messages (group_id, sender_id, content, file_path, file_name, file_size, file_type, audio_duration, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())");
                 $result = $stmt->execute([$group_id, $sender_id, $content, $file_path, $file_name, $file_size, $file_type, $audio_duration]);
             } else {
                 // 发送文本消息，只使用数据库中实际存在的字段
-                $stmt = $this->conn->prepare("INSERT INTO group_messages (group_id, sender_id, content) VALUES (?, ?, ?)");
+                $stmt = $this->conn->prepare("INSERT INTO group_messages (group_id, sender_id, content, created_at) VALUES (?, ?, ?, NOW())");
                 $result = $stmt->execute([$group_id, $sender_id, $content]);
             }
             
@@ -579,6 +663,25 @@ class Group {
         return true;
     }
     
+    /**
+     * 检查消息是否属于该群聊
+     * @param int $message_id 消息ID
+     * @param int $group_id 群聊ID
+     * @return bool 是否属于该群聊
+     */
+    public function isMessageInGroup($message_id, $group_id) {
+        try {
+            $stmt = $this->conn->prepare(
+                "SELECT * FROM group_messages WHERE id = ? AND group_id = ?"
+            );
+            $stmt->execute([$message_id, $group_id]);
+            return $stmt->rowCount() > 0;
+        } catch(PDOException $e) {
+            error_log("Is Message In Group Error: " . $e->getMessage());
+            return false;
+        }
+    }
+    
     public function recallGroupMessage($message_id, $user_id) {
         try {
             // 获取消息信息
@@ -644,6 +747,81 @@ class Group {
         }
     }
     
+    /**
+     * 踢出群成员
+     * @param int $group_id 群聊ID
+     * @param int $user_id 被踢用户ID
+     * @param int $operator_id 操作者ID
+     * @return array 结果数组，包含success和message
+     */
+    public function kickMember($group_id, $user_id, $operator_id) {
+        // 获取群信息
+        $group_info = $this->getGroupInfo($group_id);
+        if (!$group_info) {
+            return ['success' => false, 'message' => '群聊不存在'];
+        }
+        
+        $owner_id = $group_info['owner_id'];
+        
+        // 不能踢出自己
+        if ($user_id == $operator_id) {
+            return ['success' => false, 'message' => '不能踢出自己'];
+        }
+        
+        // 不能踢出群主
+        if ($user_id == $owner_id) {
+            return ['success' => false, 'message' => '不能踢出群主'];
+        }
+        
+        // 检查操作者权限
+        $stmt = $this->conn->prepare("SELECT role FROM group_members WHERE group_id = ? AND user_id = ?");
+        $stmt->execute([$group_id, $operator_id]);
+        $operator_role = $stmt->fetch();
+        
+        if (!$operator_role) {
+            return ['success' => false, 'message' => '您不是群成员'];
+        }
+        
+        // 检查被踢用户的角色
+        $stmt = $this->conn->prepare("SELECT role FROM group_members WHERE group_id = ? AND user_id = ?");
+        $stmt->execute([$group_id, $user_id]);
+        $target_role = $stmt->fetch();
+        
+        if (!$target_role) {
+            return ['success' => false, 'message' => '被踢用户不是群成员'];
+        }
+        
+        // 权限检查逻辑
+        if ($operator_role['role'] == 'Master') {
+            // Master可以踢出任何人（自己和群主除外，已在上面对群主进行了检查）
+            $can_kick = true;
+        } elseif ($operator_role['role'] == 'admin') {
+            // admin只能踢出普通成员，不能踢出Master和其他admin
+            $can_kick = ($target_role['role'] == 'member');
+        } else {
+            // 普通成员没有踢人权限
+            $can_kick = false;
+        }
+        
+        if (!$can_kick) {
+            return ['success' => false, 'message' => '权限不足，无法踢出该用户'];
+        }
+        
+        try {
+            $stmt = $this->conn->prepare("DELETE FROM group_members WHERE group_id = ? AND user_id = ?");
+            $result = $stmt->execute([$group_id, $user_id]);
+            
+            if ($result) {
+                return ['success' => true, 'message' => '踢出成员成功'];
+            } else {
+                return ['success' => false, 'message' => '踢出成员失败'];
+            }
+        } catch (PDOException $e) {
+            error_log("Kick member error: " . $e->getMessage());
+            return ['success' => false, 'message' => '踢出成员失败'];
+        }
+    }
+
     /**
      * 退出群聊
      * @param int $group_id 群聊ID
@@ -864,12 +1042,6 @@ class Group {
         $stmt->execute([$group_id]);
         $group_info = $stmt->fetch();
         
-        // 调试日志
-        error_log("isUserInGroup: group_id=$group_id, user_id=$user_id, group_exists=" . ($group_info ? 'true' : 'false'));
-        if ($group_info) {
-            error_log("isUserInGroup: all_user_group=" . $group_info['all_user_group']);
-        }
-        
         if ($group_info && $group_info['all_user_group'] > 0) {
             // 全员群聊（all_user_group > 0），所有用户都视为群成员
             return true;
@@ -878,7 +1050,6 @@ class Group {
             $stmt = $this->conn->prepare("SELECT id FROM group_members WHERE group_id = ? AND user_id = ?");
             $stmt->execute([$group_id, $user_id]);
             $is_member = $stmt->fetch() !== false;
-            error_log("isUserInGroup: is_member=" . ($is_member ? 'true' : 'false'));
             return $is_member;
         }
     }
@@ -1079,9 +1250,19 @@ class Group {
      * 批准入群申请
      * @param int $request_id 申请ID
      * @param int $group_id 群聊ID
-     * @return bool 是否成功
+     * @param int $operator_id 操作者ID
+     * @return array 结果数组，包含success和message
      */
-    public function approveJoinRequest($request_id, $group_id) {
+    public function approveJoinRequest($request_id, $group_id, $operator_id) {
+        // 检查操作者权限：只有Master和admin可以审批入群申请
+        $stmt = $this->conn->prepare("SELECT role FROM group_members WHERE group_id = ? AND user_id = ?");
+        $stmt->execute([$group_id, $operator_id]);
+        $operator_role = $stmt->fetch();
+        
+        if (!$operator_role || !in_array($operator_role['role'], ['Master', 'admin'])) {
+            return ['success' => false, 'message' => '权限不足，只有群主和管理员可以审批入群申请'];
+        }
+        
         try {
             $this->conn->beginTransaction();
             
@@ -1092,7 +1273,7 @@ class Group {
             
             if (!$request) {
                 $this->conn->rollBack();
-                return false;
+                return ['success' => false, 'message' => '申请不存在或已处理'];
             }
             
             // 添加用户为群成员
@@ -1104,11 +1285,11 @@ class Group {
             $stmt->execute([$request_id]);
             
             $this->conn->commit();
-            return true;
+            return ['success' => true, 'message' => '批准入群申请成功'];
         } catch (PDOException $e) {
             $this->conn->rollBack();
             error_log("Approve join request error: " . $e->getMessage());
-            return false;
+            return ['success' => false, 'message' => '批准入群申请失败'];
         }
     }
     
@@ -1116,15 +1297,31 @@ class Group {
      * 拒绝入群申请
      * @param int $request_id 申请ID
      * @param int $group_id 群聊ID
-     * @return bool 是否成功
+     * @param int $operator_id 操作者ID
+     * @return array 结果数组，包含success和message
      */
-    public function rejectJoinRequest($request_id, $group_id) {
+    public function rejectJoinRequest($request_id, $group_id, $operator_id) {
+        // 检查操作者权限：只有Master和admin可以审批入群申请
+        $stmt = $this->conn->prepare("SELECT role FROM group_members WHERE group_id = ? AND user_id = ?");
+        $stmt->execute([$group_id, $operator_id]);
+        $operator_role = $stmt->fetch();
+        
+        if (!$operator_role || !in_array($operator_role['role'], ['Master', 'admin'])) {
+            return ['success' => false, 'message' => '权限不足，只有群主和管理员可以审批入群申请'];
+        }
+        
         try {
             $stmt = $this->conn->prepare("UPDATE group_join_requests SET status = 'rejected' WHERE id = ? AND group_id = ? AND status = 'pending'");
-            return $stmt->execute([$request_id, $group_id]);
+            $result = $stmt->execute([$request_id, $group_id]);
+            
+            if ($result) {
+                return ['success' => true, 'message' => '拒绝入群申请成功'];
+            } else {
+                return ['success' => false, 'message' => '拒绝入群申请失败'];
+            }
         } catch (PDOException $e) {
             error_log("Reject join request error: " . $e->getMessage());
-            return false;
+            return ['success' => false, 'message' => '拒绝入群申请失败'];
         }
     }
     
@@ -1227,8 +1424,8 @@ class Group {
             $group_id = $this->conn->lastInsertId();
             
             // 添加创建者为成员和群主
-            $stmt = $this->conn->prepare("INSERT INTO group_members (group_id, user_id, role) VALUES (?, ?, ?)");
-            $stmt->execute([$group_id, $creator_id, 'admin']);
+            $stmt = $this->conn->prepare("INSERT INTO group_members (group_id, user_id, is_admin) VALUES (?, ?, ?)");
+            $stmt->execute([$group_id, $creator_id, 1]);
             
             // 获取所有用户
             $stmt = $this->conn->prepare("SELECT id FROM users WHERE id != ?");

@@ -17,6 +17,121 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once 'config.php';
 require_once 'db.php';
 
+// 安全检查函数
+function checkSafetyStatus() {
+    // 检查是否存在安全锁
+    if (file_exists('Safety_locked.lock')) {
+        // 显示安全警告
+        echo '<!DOCTYPE html>
+        <html lang="zh-CN">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>安全警告 - Modern Chat</title>
+            <style>
+                * {
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                }
+                body {
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+                    min-height: 100vh;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 20px;
+                }
+                .warning-container {
+                    background: white;
+                    border-radius: 16px;
+                    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+                    max-width: 500px;
+                    width: 100%;
+                    padding: 40px;
+                    text-align: center;
+                }
+                .warning-icon {
+                    font-size: 64px;
+                    margin-bottom: 20px;
+                }
+                .warning-title {
+                    font-size: 24px;
+                    font-weight: 600;
+                    color: #ff4d4f;
+                    margin-bottom: 16px;
+                }
+                .warning-message {
+                    font-size: 16px;
+                    color: #666;
+                    line-height: 1.6;
+                    margin-bottom: 30px;
+                }
+                .update-link {
+                    display: inline-block;
+                    padding: 12px 30px;
+                    background: linear-gradient(135deg, #12b7f5 0%, #00a2e8 100%);
+                    color: white;
+                    text-decoration: none;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    transition: all 0.3s ease;
+                    box-shadow: 0 4px 15px rgba(18, 183, 245, 0.4);
+                }
+                .update-link:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 6px 20px rgba(18, 183, 245, 0.5);
+                }
+            </style>
+        </head>
+        <body>
+            <div class="warning-container">
+                <div class="warning-icon">⚠️</div>
+                <h2 class="warning-title">安全警告</h2>
+                <p class="warning-message">您的服务器正处于不安全状态，请登录系统管理员账号访问 <a href="updata.php" class="update-link">系统更新</a> 进行安全更新后即可解锁</p>
+            </div>
+        </body>
+        </html>';
+        exit;
+    }
+    
+    // 检查版本是否需要锁定
+    $distinctionVerUrl = 'https://updata.sunaookami-shiroko.top/distinction_ver.json';
+    $distinctionVerJson = @file_get_contents($distinctionVerUrl);
+    
+    if ($distinctionVerJson !== false) {
+        $distinctionVerData = json_decode($distinctionVerJson, true);
+        if ($distinctionVerData !== null && isset($distinctionVerData['version'])) {
+            $serverVer = $distinctionVerData['version'];
+            
+            // 检查本地Safety_distinction.json
+            if (file_exists('Safety_distinction.json')) {
+                $localSafetyJson = @file_get_contents('Safety_distinction.json');
+                if ($localSafetyJson !== false) {
+                    $localSafety = json_decode($localSafetyJson, true);
+                    if ($localSafety !== null && isset($localSafety['version'])) {
+                        if ($localSafety['version'] !== $serverVer) {
+                            // 版本不一致，创建安全锁
+                            file_put_contents('Safety_locked.lock', 'Locked due to version mismatch');
+                            // 重新检查安全状态
+                            checkSafetyStatus();
+                        }
+                    }
+                }
+            } else {
+                // 本地文件不存在，创建安全锁
+                file_put_contents('Safety_locked.lock', 'Locked due to missing Safety_distinction.json');
+                // 重新检查安全状态
+                checkSafetyStatus();
+            }
+        }
+    }
+}
+
+// 执行安全检查
+checkSafetyStatus();
+
 // 检查用户是否登录
 if (!isset($_SESSION['user_id'])) {
     header('Location: login.php');
@@ -171,6 +286,57 @@ if (!(isset($current_user['is_admin']) && $current_user['is_admin']) && !((isset
 }
 
 // 处理歌单配置更新
+if (isset($_POST['action']) && $_POST['action'] == 'sync_qq_playlist') {
+    // 简单的权限检查，依赖 session
+    if (!isset($_SESSION['user_id'])) {
+        echo json_encode(['success' => false, 'message' => '未登录']);
+        exit;
+    }
+
+    header('Content-Type: application/json');
+    
+    $playlist_name = $_POST['playlist_name'] ?? '';
+    $songs_json = $_POST['songs'] ?? '[]';
+    $songs = json_decode($songs_json, true);
+    
+    if (empty($playlist_name) || empty($songs)) {
+        echo json_encode(['success' => false, 'message' => '参数错误或歌单为空']);
+        exit;
+    }
+    
+    // 读取现有配置
+    $config_file = 'config/song_config.json';
+    $current_config = [];
+    if (file_exists($config_file)) {
+        $current_config = json_decode(file_get_contents($config_file), true);
+    }
+    
+    // 构造新歌单数据
+    $new_playlist_data = [];
+    foreach ($songs as $song_name => $song_id) {
+        $new_playlist_data[] = [$song_name => (string)$song_id];
+    }
+    
+    // 更新配置
+    $current_config[$playlist_name] = [
+        'type' => 'qqmusic',
+        'data' => $new_playlist_data
+    ];
+    
+    // 确保config目录存在
+    if (!is_dir('config')) {
+        mkdir('config', 0777, true);
+    }
+
+    // 保存
+    if (file_put_contents($config_file, json_encode($current_config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE))) {
+        echo json_encode(['success' => true]);
+    } else {
+        echo json_encode(['success' => false, 'message' => '写入文件失败']);
+    }
+    exit;
+}
+
 if (isset($_POST['action']) && $_POST['action'] == 'save_playlists') {
     $password = isset($_POST['password']) ? $_POST['password'] : '';
     
@@ -1041,6 +1207,53 @@ if (isset($_POST['action']) && in_array($_POST['action'], [
                     header('Location: admin.php?error=处理申请失败：' . $e->getMessage());
                 }
                 break;
+                
+            case 'approve_image':
+                // 批准图片
+                $review_id = intval($_POST['review_id']);
+                
+                try {
+                    // 更新审核状态
+                    $stmt = $conn->prepare("UPDATE image_reviews SET status = 'approved', reviewed_at = NOW() WHERE id = ? AND status = 'pending'");
+                    $stmt->execute([$review_id]);
+                    
+                    header('Location: admin.php?success=图片已批准&tab=image_review');
+                } catch (PDOException $e) {
+                    error_log("Approve image error: " . $e->getMessage());
+                    header('Location: admin.php?error=批准图片失败：' . $e->getMessage());
+                }
+                break;
+                
+            case 'reject_image':
+                // 拒绝图片
+                $review_id = intval($_POST['review_id']);
+                
+                try {
+                    // 获取图片信息
+                    $stmt = $conn->prepare("SELECT * FROM image_reviews WHERE id = ? AND status = 'pending'");
+                    $stmt->execute([$review_id]);
+                    $image = $stmt->fetch();
+                    
+                    if ($image) {
+                        // 删除图片文件
+                        if (file_exists($image['file_path'])) {
+                            unlink($image['file_path']);
+                        }
+                        
+                        // 记录违规
+                        recordWarning($image['user_id'], '图片审核失败', $conn, '上传了违规图片');
+                        
+                        // 更新审核状态
+                        $stmt = $conn->prepare("UPDATE image_reviews SET status = 'rejected', reviewed_at = NOW() WHERE id = ?");
+                        $stmt->execute([$review_id]);
+                    }
+                    
+                    header('Location: admin.php?success=图片已拒绝&tab=image_review');
+                } catch (PDOException $e) {
+                    error_log("Reject image error: " . $e->getMessage());
+                    header('Location: admin.php?error=拒绝图片失败：' . $e->getMessage());
+                }
+                break;
         }
         exit;
     } catch (PDOException $e) {
@@ -1720,9 +1933,9 @@ try {
             <h1>管理页面</h1>
             <div class="user-info">
                 <div class="avatar">
-                    <?php echo htmlspecialchars(substr($current_user['username'], 0, 2), ENT_QUOTES, 'UTF-8'); ?>
+                    <?php echo substr($current_user['username'], 0, 2); ?>
                 </div>
-                <span class="username"><?php echo htmlspecialchars($current_user['username'], ENT_QUOTES, 'UTF-8'); ?></span>
+                <span class="username"><?php echo $current_user['username']; ?></span>
                 <span>(管理员)</span>
                 <a href="chat.php" class="logout-btn">返回聊天</a>
             </div>
@@ -1751,6 +1964,7 @@ try {
                 <button class="tab" onclick="openTab(event, 'system_settings')">系统设置</button>
                 <button class="tab" onclick="openTab(event, 'announcements')">公告发布</button>
                 <button class="tab" onclick="openTab(event, 'playlists')">歌单管理</button>
+                <button class="tab" onclick="openTab(event, 'image_review')">图片审核</button>
             </div>
 
             <!-- 群聊管理 -->
@@ -1772,15 +1986,15 @@ try {
                         ?>
                         <div class="group-item">
                             <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                                <h4><?php echo htmlspecialchars($group_item['name'], ENT_QUOTES, 'UTF-8'); ?></h4>
+                                <h4><?php echo $group_item['name']; ?></h4>
                                 <?php if ($has_ban_record): ?>
-                                    <span onclick="showBanRecordModal('group', <?php echo $group_item['id']; ?>, '<?php echo htmlspecialchars($group_item['name'], ENT_QUOTES, 'UTF-8'); ?>')" style="font-size: 20px; cursor: pointer; color: #ffc107;" title="查看封禁记录">⚠️</span>
+                                    <span onclick="showBanRecordModal('group', <?php echo $group_item['id']; ?>, '<?php echo $group_item['name']; ?>')" style="font-size: 20px; cursor: pointer; color: #ffc107;" title="查看封禁记录">⚠️</span>
                                 <?php endif; ?>
                             </div>
-                            <p>创建者: <?php echo htmlspecialchars($group_item['creator_username'], ENT_QUOTES, 'UTF-8'); ?></p>
-                            <p>群主: <?php echo htmlspecialchars($group_item['owner_username'], ENT_QUOTES, 'UTF-8'); ?></p>
+                            <p>创建者: <?php echo $group_item['creator_username']; ?></p>
+                            <p>群主: <?php echo $group_item['owner_username']; ?></p>
                             <p class="members">成员数量: <?php echo $group_item['member_count']; ?></p>
-                            <p>创建时间: <?php echo htmlspecialchars($group_item['created_at'], ENT_QUOTES, 'UTF-8'); ?></p>
+                            <p>创建时间: <?php echo $group_item['created_at']; ?></p>
                             <!-- 检查群聊封禁状态 -->
                             <?php 
                             try {
@@ -1805,14 +2019,14 @@ try {
                                 if ($ban_info):
                             ?>
                                 <div style="margin-top: 10px; padding: 8px; background: #ffebee; color: #d32f2f; border-radius: 4px; font-size: 12px;">
-                                    已封禁 - 截止时间: <?php echo $ban_info['ban_end'] ? htmlspecialchars($ban_info['ban_end'], ENT_QUOTES, 'UTF-8') : '永久'; ?><br>
-                                    原因: <?php echo htmlspecialchars($ban_info['reason'], ENT_QUOTES, 'UTF-8'); ?>
+                                    已封禁 - 截止时间: <?php echo $ban_info['ban_end'] ? $ban_info['ban_end'] : '永久'; ?><br>
+                                    原因: <?php echo $ban_info['reason']; ?>
                                 </div>
                                 <?php if ($ban_info['ban_end']): ?>
                                     <button onclick="showLiftGroupBanModal(<?php echo $group_item['id']; ?>)" style="margin-top: 10px; padding: 6px 12px; background: #81c784; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 8px;">解除封禁</button>
                                 <?php endif; ?>
                             <?php else: ?>
-                                <button onclick="showBanGroupModal(<?php echo $group_item['id']; ?>, '<?php echo htmlspecialchars($group_item['name'], ENT_QUOTES, 'UTF-8'); ?>')" style="margin-top: 10px; padding: 6px 12px; background: #e57373; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 8px;">封禁群聊</button>
+                                <button onclick="showBanGroupModal(<?php echo $group_item['id']; ?>, '<?php echo $group_item['name']; ?>')" style="margin-top: 10px; padding: 6px 12px; background: #e57373; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 8px;">封禁群聊</button>
                             <?php endif; 
                             } catch (PDOException $e) {
                                 // 如果表不存在，忽略错误
@@ -1832,9 +2046,9 @@ try {
                         <div class="message">
                             <div class="message-header">
                                 <span class="message-sender">
-                                    <?php echo htmlspecialchars($msg['sender_username'], ENT_QUOTES, 'UTF-8'); ?> (群聊: <?php echo htmlspecialchars($msg['group_name'], ENT_QUOTES, 'UTF-8'); ?>)
+                                    <?php echo $msg['sender_username']; ?> (群聊: <?php echo $msg['group_name']; ?>)
                                 </span>
-                                <span class="message-time"><?php echo htmlspecialchars($msg['created_at'], ENT_QUOTES, 'UTF-8'); ?></span>
+                                <span class="message-time"><?php echo $msg['created_at']; ?></span>
                             </div>
                             <div class="message-content">
                                 <?php if ($msg['content']): ?>
@@ -1842,8 +2056,8 @@ try {
                                 <?php endif; ?>
                                 <?php if ($msg['file_path']): ?>
                                     <div class="message-file">
-                                        <a href="<?php echo htmlspecialchars($msg['file_path'], ENT_QUOTES, 'UTF-8'); ?>" target="_blank">
-                                            📎 <?php echo htmlspecialchars($msg['file_name'], ENT_QUOTES, 'UTF-8'); ?>
+                                        <a href="<?php echo $msg['file_path']; ?>" target="_blank">
+                                            📎 <?php echo $msg['file_name']; ?>
                                         </a>
                                     </div>
                                 <?php endif; ?>
@@ -1861,9 +2075,9 @@ try {
                         <div class="message">
                             <div class="message-header">
                                 <span class="message-sender">
-                                    <?php echo htmlspecialchars($msg['sender_username'], ENT_QUOTES, 'UTF-8'); ?> → <?php echo htmlspecialchars($msg['receiver_username'], ENT_QUOTES, 'UTF-8'); ?>
+                                    <?php echo $msg['sender_username']; ?> → <?php echo $msg['receiver_username']; ?>
                                 </span>
-                                <span class="message-time"><?php echo htmlspecialchars($msg['created_at'], ENT_QUOTES, 'UTF-8'); ?></span>
+                                <span class="message-time"><?php echo $msg['created_at']; ?></span>
                             </div>
                             <div class="message-content">
                                 <?php if ($msg['content']): ?>
@@ -1871,8 +2085,8 @@ try {
                                 <?php endif; ?>
                                 <?php if ($msg['file_path']): ?>
                                     <div class="message-file">
-                                        <a href="<?php echo htmlspecialchars($msg['file_path'], ENT_QUOTES, 'UTF-8'); ?>" target="_blank">
-                                            📎 <?php echo htmlspecialchars($msg['file_name'], ENT_QUOTES, 'UTF-8'); ?>
+                                        <a href="<?php echo $msg['file_path']; ?>" target="_blank">
+                                            📎 <?php echo $msg['file_name']; ?>
                                         </a>
                                     </div>
                                 <?php endif; ?>
@@ -1918,42 +2132,42 @@ try {
                         ?>
                         <div class="group-item">
                             <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                                <h4><?php echo htmlspecialchars($user_item['username'], ENT_QUOTES, 'UTF-8'); ?></h4>
+                                <h4><?php echo $user_item['username']; ?></h4>
                                 <?php if ($has_ban_record): ?>
-                                    <span onclick="showBanRecordModal('user', <?php echo $user_item['id']; ?>, '<?php echo htmlspecialchars($user_item['username'], ENT_QUOTES, 'UTF-8'); ?>')" style="font-size: 20px; cursor: pointer; color: #ffc107;" title="查看封禁记录">⚠️</span>
+                                    <span onclick="showBanRecordModal('user', <?php echo $user_item['id']; ?>, '<?php echo $user_item['username']; ?>')" style="font-size: 20px; cursor: pointer; color: #ffc107;" title="查看封禁记录">⚠️</span>
                                 <?php endif; ?>
                             </div>
-                            <p>邮箱: <?php echo htmlspecialchars($user_item['email'], ENT_QUOTES, 'UTF-8'); ?></p>
-                            <p>状态: <?php echo htmlspecialchars($user_item['status'], ENT_QUOTES, 'UTF-8'); ?></p>
+                            <p>邮箱: <?php echo $user_item['email']; ?></p>
+                            <p>状态: <?php echo $user_item['status']; ?></p>
                             <p>角色: <?php echo $user_item['is_admin'] ? '管理员' : '普通用户'; ?></p>
-                            <p>手机号: <?php echo !empty($user_item['phone']) ? htmlspecialchars($user_item['phone'], ENT_QUOTES, 'UTF-8') : '未绑定'; ?></p>
-                            <p>注册时间: <?php echo htmlspecialchars($user_item['created_at'], ENT_QUOTES, 'UTF-8'); ?></p>
-                            <p>最后活跃: <?php echo htmlspecialchars($user_item['last_active'], ENT_QUOTES, 'UTF-8'); ?></p>
+                            <p>手机号: <?php echo !empty($user_item['phone']) ? $user_item['phone'] : '未绑定'; ?></p>
+                            <p>注册时间: <?php echo $user_item['created_at']; ?></p>
+                            <p>最后活跃: <?php echo $user_item['last_active']; ?></p>
                             <!-- 检查用户封禁状态 -->
                             <?php 
                             $ban_info = $user->isBanned($user_item['id']);
                             if ($ban_info):
                             ?>
                                 <div style="margin-top: 10px; padding: 8px; background: #ffebee; color: #d32f2f; border-radius: 4px; font-size: 12px;">
-                                    已封禁 - 截止时间: <?php echo $ban_info['expires_at'] ? htmlspecialchars($ban_info['expires_at'], ENT_QUOTES, 'UTF-8') : '永久'; ?><br>
-                                    原因: <?php echo htmlspecialchars($ban_info['reason'], ENT_QUOTES, 'UTF-8'); ?>
+                                    已封禁 - 截止时间: <?php echo $ban_info['expires_at'] ? $ban_info['expires_at'] : '永久'; ?><br>
+                                    原因: <?php echo $ban_info['reason']; ?>
                                 </div>
                             <?php endif; ?>
                             <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
                                 <?php if ($user_item['id'] !== $current_user['id'] && !$user_item['is_admin']): ?>
                                     <button onclick="showClearDataModal('deactivate_user', <?php echo $user_item['id']; ?>)" style="padding: 6px 12px; background: #ffa726; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">注销用户</button>
                                     <button onclick="showClearDataModal('delete_user', <?php echo $user_item['id']; ?>)" style="padding: 6px 12px; background: #ef5350; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">强制删除</button>
-                                    <button onclick="showChangePasswordModal(<?php echo $user_item['id']; ?>, '<?php echo htmlspecialchars($user_item['username'], ENT_QUOTES, 'UTF-8'); ?>')" style="padding: 6px 12px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">修改密码</button>
-                                    <button onclick="showChangeUsernameModal(<?php echo $user_item['id']; ?>, '<?php echo htmlspecialchars($user_item['username'], ENT_QUOTES, 'UTF-8'); ?>')" style="padding: 6px 12px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">修改名称</button>
+                                    <button onclick="showChangePasswordModal(<?php echo $user_item['id']; ?>, '<?php echo $user_item['username']; ?>')" style="padding: 6px 12px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">修改密码</button>
+                                    <button onclick="showChangeUsernameModal(<?php echo $user_item['id']; ?>, '<?php echo $user_item['username']; ?>')" style="padding: 6px 12px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">修改名称</button>
                                     <?php if (!empty($user_item['phone'])): ?>
                                         <button onclick="showClearDataModal('unbind_phone', <?php echo $user_item['id']; ?>)" style="padding: 6px 12px; background: #795548; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">解绑手机</button>
                                     <?php endif; ?>
                                     <?php if ($ban_info): ?>
                                         <?php if ($ban_info['expires_at']): ?>
-                                            <button onclick="showLiftBanModal(<?php echo $user_item['id']; ?>, '<?php echo htmlspecialchars($user_item['username'], ENT_QUOTES, 'UTF-8'); ?>')" style="padding: 6px 12px; background: #81c784; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">解除封禁</button>
+                                            <button onclick="showLiftBanModal(<?php echo $user_item['id']; ?>, '<?php echo $user_item['username']; ?>')" style="padding: 6px 12px; background: #81c784; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">解除封禁</button>
                                         <?php endif; ?>
                                     <?php else: ?>
-                                        <button onclick="showBanUserModal(<?php echo $user_item['id']; ?>, '<?php echo htmlspecialchars($user_item['username'], ENT_QUOTES, 'UTF-8'); ?>')" style="padding: 6px 12px; background: #e57373; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">封禁用户</button>
+                                        <button onclick="showBanUserModal(<?php echo $user_item['id']; ?>, '<?php echo $user_item['username']; ?>')" style="padding: 6px 12px; background: #e57373; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">封禁用户</button>
                                     <?php endif; ?>
                                 <?php endif; ?>
                             </div>
@@ -2045,12 +2259,12 @@ try {
                                 echo '<div class="group-item">';
                                 echo '<h4>用户: ' . htmlspecialchars($request['username']) . '</h4>';
                                 echo '<p>邮箱: ' . htmlspecialchars($request['email']) . '</p>';
-                                echo '<p>申请时间: ' . htmlspecialchars($request['created_at']) . '</p>';
+                                echo '<p>申请时间: ' . $request['created_at'] . '</p>';
                                 echo '<p>状态: <span class="' . $status_class . '">' . 
                                     ($request['status'] == 'pending' ? '待处理' : 
                                      ($request['status'] == 'approved' ? '已通过' : '已拒绝')) . '</span></p>';
                                 if ($request['approved_at']) {
-                                    echo '<p>处理时间: ' . htmlspecialchars($request['approved_at']) . '</p>';
+                                    echo '<p>处理时间: ' . $request['approved_at'] . '</p>';
                                 }
                                 
                                 // 只显示待处理申请的审核按钮
@@ -2079,6 +2293,12 @@ try {
                     // 读取配置文件
                     $config_file = 'config/config.json';
                     $config_data = json_decode(file_get_contents($config_file), true);
+                    
+                    // 确保QR_code_color配置项存在
+                    if (!isset($config_data['QR_code_color'])) {
+                        $config_data['QR_code_color'] = 'black';
+                        file_put_contents($config_file, json_encode($config_data, JSON_PRETTY_PRINT));
+                    }
                     
                     // 处理表单提交
                     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_settings') {
@@ -2194,6 +2414,15 @@ try {
                                                     case 'Random_song':
                                                         echo '是否在聊天页面右下角显示随机音乐播放器';
                                                         break;
+                                                    case 'QR_code_color':
+                                                        echo '扫码登录二维码颜色';
+                                                        break;
+                                                    case 'Allow_upload_directory_size':
+                                                        echo '允许上传目录大小';
+                                                        break;
+                                                    case 'Allow_upload_directory_size_units':
+                                                        echo '允许上传目录大小单位';
+                                                        break;
                                                     default:
                                                         echo '';
                                                 }
@@ -2212,6 +2441,18 @@ try {
                                                 <select name="<?php echo $key; ?>" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 100px;">
                                                     <option value="POST" <?php echo strtoupper($value) === 'POST' ? 'selected' : ''; ?>>POST</option>
                                                     <option value="GET" <?php echo strtoupper($value) === 'GET' ? 'selected' : ''; ?>>GET</option>
+                                                </select>
+                                            <?php elseif ($key === 'QR_code_color'): ?>
+                                                <!-- 二维码颜色使用下拉选择框 -->
+                                                <select name="<?php echo $key; ?>" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 100px;">
+                                                    <option value="black" <?php echo $value === 'black' ? 'selected' : ''; ?>>黑色</option>
+                                                    <option value="white" <?php echo $value === 'white' ? 'selected' : ''; ?>>白色</option>
+                                                </select>
+                                            <?php elseif ($key === 'Allow_upload_directory_size_units'): ?>
+                                                <!-- 上传目录大小单位使用下拉选择框 -->
+                                                <select name="<?php echo $key; ?>" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 100px;">
+                                                    <option value="MB" <?php echo $value === 'MB' ? 'selected' : ''; ?>>MB</option>
+                                                    <option value="GB" <?php echo $value === 'GB' ? 'selected' : ''; ?>>GB</option>
                                                 </select>
                                             <?php else: ?>
                                                 <!-- 其他类型使用输入框 -->
@@ -2576,15 +2817,15 @@ try {
                                             <td style="padding: 12px; color: #333;"><?php echo $announcement['id']; ?></td>
                                             <td style="padding: 12px; color: #333; max-width: 200px;"><?php echo htmlspecialchars($announcement['title']); ?></td>
                                             <td style="padding: 12px; color: #666; max-width: 300px;"><?php echo htmlspecialchars(substr($announcement['content'], 0, 50)) . (strlen($announcement['content']) > 50 ? '...' : ''); ?></td>
-                                            <td style="padding: 12px; color: #666;"><?php echo htmlspecialchars($announcement['admin_username']); ?></td>
+                                            <td style="padding: 12px; color: #666;"><?php echo $announcement['admin_username']; ?></td>
                                             <td style="padding: 12px;">
                                                 <span class="status-<?php echo $announcement['is_active'] ? 'approved' : 'pending'; ?>">
                                                     <?php echo $announcement['is_active'] ? '已发布' : '未发布'; ?>
                                                 </span>
                                             </td>
-                                            <td style="padding: 12px; color: #666; font-size: 12px;"><?php echo htmlspecialchars($announcement['created_at']); ?></td>
+                                            <td style="padding: 12px; color: #666; font-size: 12px;"><?php echo $announcement['created_at']; ?></td>
                                             <td style="padding: 12px; color: #666; font-size: 12px;"><?php echo $announcement['read_count']; ?></td>
-                                            <td style="padding: 12px; color: #666; font-size: 12px;"><?php echo htmlspecialchars($announcement['updated_at']); ?></td>
+                                            <td style="padding: 12px; color: #666; font-size: 12px;"><?php echo $announcement['updated_at']; ?></td>
                                             <td style="padding: 12px;">
                                                 <!-- 编辑按钮 -->
                                                 <button onclick="showEditAnnouncementModal(<?php echo $announcement['id']; ?>, '<?php echo htmlspecialchars($announcement['title']); ?>', '<?php echo htmlspecialchars($announcement['content']); ?>', <?php echo $announcement['is_active'] ? 'true' : 'false'; ?>)" 
@@ -2745,6 +2986,7 @@ try {
                                             </div>
                                             <input type="text" class="new-qqmusic-id search-input" placeholder="ID(必填)" style="margin-bottom: 0; flex: 1;">
                                             <button type="button" onclick="addQQMusicRow(this)" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">添加</button>
+                                            <button type="button" onclick="syncQQPlaylist(this)" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap; margin-left: 10px;">同步歌单</button>
                                         </div>
                                     </div>
                                 </div>
@@ -2771,15 +3013,186 @@ try {
                         </div>
                     </form>
                 </div>
+                
+                <h3 style="margin-top: 40px;">点歌管理</h3>
+                <div class="settings-list">
+                    <div style="background: #f9f9f9; margin: 10px; border-radius: 8px; border: 1px solid #eee; padding: 20px;">
+                        <h4 style="margin: 0 0 15px 0; color: #667eea;">点歌列表 (temp_song_config.json)</h4>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <button type="button" onclick="refreshTempSongList()" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">刷新列表</button>
+                            <span id="temp-song-last-updated" style="margin-left: 10px; font-size: 12px; color: #666;">最后更新: 刚刚</span>
+                        </div>
+                        
+                        <div id="temp-song-list-container">
+                            <div style="background: white; border: 1px solid #ddd; border-radius: 4px; overflow: hidden;">
+                                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                                    <thead style="background: #f1f3f5; border-bottom: 1px solid #ddd;">
+                                        <tr>
+                                            <th style="padding: 8px; text-align: center; width: 50px; color: #555;">ID</th>
+                                            <th style="padding: 8px; text-align: left; color: #555;">歌名</th>
+                                            <th style="padding: 8px; text-align: center; width: 120px; color: #555;">选择信息</th>
+                                            <th style="padding: 8px; text-align: center; width: 100px; color: #555;">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="temp-song-table-body">
+                                        <tr>
+                                            <td colspan="4" style="padding: 20px; text-align: center; color: #999;">加载中点歌列表...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                                <div id="temp-song-empty-tip" style="padding: 20px; text-align: center; color: #999; display: none;">暂无点歌</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 图片审核 -->
+            <div id="image_review" class="tab-content">
+                <h3>图片审核</h3>
+                <div class="groups-list">
+                    <?php
+                    // 查询待审核的图片
+                    try {
+                        $stmt = $conn->prepare("SELECT ir.*, u.username FROM image_reviews ir JOIN users u ON ir.user_id = u.id WHERE ir.status = 'pending' ORDER BY ir.created_at DESC");
+                        $stmt->execute();
+                        $pending_images = $stmt->fetchAll();
+                        
+                        if (empty($pending_images)) {
+                            echo '<p style="text-align: center; color: #666; margin: 20px 0;">没有待审核的图片</p>';
+                        } else {
+                            foreach ($pending_images as $image) {
+                                echo '<div class="group-item">';
+                                echo '<h4>用户: ' . htmlspecialchars($image['username']) . '</h4>';
+                                echo '<p>文件名: ' . htmlspecialchars($image['original_name']) . '</p>';
+                                echo '<p>文件大小: ' . number_format($image['file_size'] / 1024, 2) . ' KB</p>';
+                                echo '<p>上传时间: ' . $image['created_at'] . '</p>';
+                                echo '<div style="margin: 15px 0; text-align: center;">';
+                                echo '<img src="' . APP_URL . '/' . $image['file_path'] . '" style="max-width: 100%; max-height: 200px; border-radius: 8px; object-fit: cover;">';
+                                echo '</div>';
+                                echo '<div style="margin-top: 15px; display: flex; gap: 10px;">';
+                                echo '<form method="POST" action="" style="flex: 1;">';
+                                echo '<input type="hidden" name="action" value="approve_image">';
+                                echo '<input type="hidden" name="review_id" value="' . $image['id'] . '">';
+                                echo '<input type="hidden" name="password" value="' . htmlspecialchars($_POST['password'] ?? '') . '">';
+                                echo '<button type="submit" style="width: 100%; padding: 10px; background: #4caf50; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;">通过</button>';
+                                echo '</form>';
+                                echo '<form method="POST" action="" style="flex: 1;">';
+                                echo '<input type="hidden" name="action" value="reject_image">';
+                                echo '<input type="hidden" name="review_id" value="' . $image['id'] . '">';
+                                echo '<input type="hidden" name="password" value="' . htmlspecialchars($_POST['password'] ?? '') . '">';
+                                echo '<button type="submit" style="width: 100%; padding: 10px; background: #f44336; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;">拒绝</button>';
+                                echo '</form>';
+                                echo '</div>';
+                                echo '</div>';
+                            }
+                        }
+                    } catch (PDOException $e) {
+                        error_log("Get pending images error: " . $e->getMessage());
+                        echo '<p style="text-align: center; color: #ff4757; margin: 20px 0;">查询待审核图片失败</p>';
+                    }
+                    ?>
+                </div>
             </div>
 
             <script>
-            // 页面加载完成后初始化所有 URL 表格
+            // 页面加载完成后初始化所有 URL 表格和点歌列表
             document.addEventListener('DOMContentLoaded', function() {
                 document.querySelectorAll('.url-editor-container').forEach(container => {
                     renderUrlTable(container);
                 });
+                
+                // 初始化点歌列表
+                refreshTempSongList();
+                
+                // 每30秒自动刷新点歌列表
+                setInterval(refreshTempSongList, 30000);
             });
+            
+            // 刷新点歌列表
+            function refreshTempSongList() {
+                const tbody = document.getElementById('temp-song-table-body');
+                const emptyTip = document.getElementById('temp-song-empty-tip');
+                const lastUpdated = document.getElementById('temp-song-last-updated');
+                
+                // 显示加载状态
+                tbody.innerHTML = '<tr><td colspan="4" style="padding: 20px; text-align: center; color: #999;">加载中点歌列表...</td></tr>';
+                emptyTip.style.display = 'none';
+                
+                // 发送请求获取点歌列表
+                fetch('get_playlist_music.php?name=歌单')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (Array.isArray(data) && data.length > 0) {
+                            // 有歌曲数据
+                            tbody.innerHTML = '';
+                            data.forEach((song, index) => {
+                                const tr = document.createElement('tr');
+                                tr.style.borderBottom = '1px solid #f0f0f0';
+                                
+                                const chooseInfo = song.choose_id ? `choose: ${song.choose_id}${song.page ? `, page: ${song.page}` : ''}` : '无';
+                                
+                                tr.innerHTML = `
+                                    <td style="padding: 8px; text-align: center; color: #666;">${index + 1}</td>
+                                    <td style="padding: 8px; color: #333;">${song.title}</td>
+                                    <td style="padding: 8px; text-align: center; color: #666;">${chooseInfo}</td>
+                                    <td style="padding: 8px; text-align: center;">
+                                        <button type="button" onclick="deleteTempSong('${encodeURIComponent(song.title)}')" style="padding: 4px 8px; background: #ff4757; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">删除</button>
+                                    </td>
+                                `;
+                                tbody.appendChild(tr);
+                            });
+                            emptyTip.style.display = 'none';
+                        } else {
+                            // 无歌曲数据
+                            tbody.innerHTML = '';
+                            emptyTip.style.display = 'block';
+                        }
+                        
+                        // 更新最后更新时间
+                        const now = new Date();
+                        const timeString = now.toLocaleTimeString();
+                        lastUpdated.textContent = `最后更新: ${timeString}`;
+                    })
+                    .catch(error => {
+                        console.error('加载点歌列表失败:', error);
+                        tbody.innerHTML = '<tr><td colspan="4" style="padding: 20px; text-align: center; color: #ff4757;">加载失败，请重试</td></tr>';
+                        emptyTip.style.display = 'none';
+                    });
+            }
+            
+            // 删除点歌
+            function deleteTempSong(songName) {
+                if (!confirm(`确定要删除歌曲 "${decodeURIComponent(songName)}" 吗？`)) {
+                    return;
+                }
+                
+                // 发送删除请求
+                fetch('remove_song.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        song_name: decodeURIComponent(songName)
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('删除成功');
+                        // 刷新列表
+                        refreshTempSongList();
+                    } else {
+                        alert('删除失败: ' + (data.message || '未知错误'));
+                    }
+                })
+                .catch(error => {
+                    console.error('删除歌曲失败:', error);
+                    alert('删除失败，请重试');
+                });
+            }
 
             // 渲染 URL 表格
             function renderUrlTable(container) {
@@ -5358,6 +5771,133 @@ try {
             
             // 关闭弹窗
             closeChangeUsernameModal();
+        }
+
+        // 同步QQ音乐歌单
+        async function syncQQPlaylist(btn) {
+            const qq = prompt("请输入QQ号进行同步：");
+            if (!qq) return;
+
+            const originalText = btn.textContent;
+            
+            try {
+                btn.textContent = '获取信息中...';
+                btn.disabled = true;
+
+                // 1. 获取用户信息
+                const infoRes = await fetch(`https://api.vkeys.cn/v2/music/tencent/info?uin=${qq}`);
+                const infoData = await infoRes.json();
+
+                if (infoData.code !== 200) {
+                    throw new Error('获取用户信息失败：' + (infoData.msg || '未知错误'));
+                }
+
+                const userName = infoData.data.info.name;
+                const playlistId = infoData.data.likesong.id;
+
+                if (!confirm(`获取到用户 ${userName} 中的我的喜欢歌单准备同步\n点击确认开始同步，取消则停止`)) {
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                    return;
+                }
+
+                btn.textContent = '同步中(0%)...';
+
+                let allSongs = [];
+                let page = 1;
+                let hasMore = true;
+                let totalProcessed = 0;
+
+                // 2. 循环获取所有歌曲
+                while (hasMore) {
+                    const dissRes = await fetch(`https://api.vkeys.cn/v2/music/tencent/dissinfo?id=${playlistId}&page=${page}`);
+                    const dissData = await dissRes.json();
+
+                    if (dissData.code === 200 && dissData.data.list && dissData.data.list.length > 0) {
+                        for (const songItem of dissData.data.list) {
+                            const songName = songItem.song;
+                            const singerName = songItem.singer;
+                            
+                            let matchId = null;
+
+                            // 3. 搜索并匹配歌曲 (choose=1 to 5)
+                            for (let k = 1; k <= 5; k++) {
+                                try {
+                                    // number-2 从 1 开始，即 choose 参数
+                                    const searchRes = await fetch(`https://api.vkeys.cn/v2/music/tencent?word=${encodeURIComponent(songName)}&choose=${k}&quality=8`);
+                                    const searchData = await searchRes.json();
+
+                                    if (searchData.code === 200 && searchData.data) {
+                                        const resSinger = searchData.data.singer;
+                                        // 只要歌手名包含或被包含，即视为匹配
+                                        // 注意：有些API返回的singer可能是数组或字符串，这里假设是字符串，如果是数组需要 join
+                                        const resSingerStr = Array.isArray(resSinger) ? resSinger.join('/') : resSinger;
+                                        
+                                        if (resSingerStr.includes(singerName) || singerName.includes(resSingerStr)) {
+                                            matchId = k;
+                                            break; 
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.warn('Search failed for', songName, k, e);
+                                }
+                                // 稍微延迟避免过快
+                                await new Promise(r => setTimeout(r, 200));
+                            }
+
+                            if (matchId) {
+                                allSongs.push({ name: songName, id: matchId });
+                            }
+                            
+                            totalProcessed++;
+                            btn.textContent = `同步中(${totalProcessed})...`;
+                        }
+                        page++;
+                        // 稍微延迟避免过快
+                        await new Promise(r => setTimeout(r, 500));
+                    } else {
+                        hasMore = false;
+                    }
+                }
+
+                if (allSongs.length === 0) {
+                    alert('未找到可同步的歌曲');
+                    return;
+                }
+
+                // 4. 提交保存
+                const finalData = {};
+                allSongs.forEach(s => {
+                    finalData[s.name] = s.id.toString();
+                });
+
+                const playlistName = `${userName}的歌单`;
+                
+                const formData = new FormData();
+                formData.append('action', 'sync_qq_playlist');
+                formData.append('playlist_name', playlistName);
+                formData.append('songs', JSON.stringify(finalData));
+
+                const saveRes = await fetch('admin.php', {
+                    method: 'POST',
+                    body: formData
+                });
+                const saveData = await saveRes.json();
+
+                if (saveData.success) {
+                    alert(`同步成功！已保存歌单：${playlistName}，包含 ${allSongs.length} 首歌曲`);
+                    location.reload();
+                } else {
+                    throw new Error(saveData.message || '保存失败');
+                }
+
+            } catch (e) {
+                console.error(e);
+                alert('操作失败：' + e.message);
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
         }
     </script>
             <!-- 违禁词管理 -->

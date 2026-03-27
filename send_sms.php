@@ -5,7 +5,7 @@ header('Content-Type: application/json; charset=utf-8');
 
 require_once __DIR__ . '/includes/AliSmsClient.php';
 
-// 检查请求方�?
+// 检查请求方法
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['success' => false, 'message' => 'Invalid request method']);
     exit;
@@ -19,7 +19,7 @@ $pass_token = $_POST['geetest_seccode'] ?? '';
 $gen_time = $_POST['gen_time'] ?? '';
 $captcha_id = $_POST['captcha_id'] ?? '';
 
-// 验证手机�?
+// 验证手机号
 if (empty($phone) || !preg_match('/^1[3-9]\d{9}$/', $phone)) {
     echo json_encode(['success' => false, 'message' => '请输入有效的手机号']);
     exit;
@@ -41,7 +41,7 @@ if (isset($_SESSION['last_sms_time']) && (time() - $_SESSION['last_sms_time'] < 
 // 验证极验签名
 $captchaId = '55574dfff9c40f2efeb5a26d6d188245';
 $captchaKey = 'e69583b3ddcc2b114388b5e1dc213cfd';
-$apiUrl = 'https://gcaptcha4.geetest.com/validate?captcha_id=' . urlencode($captchaId);
+$apiUrl = 'http://gcaptcha4.geetest.com/validate?captcha_id=' . urlencode($captchaId);
 
 $sign_token = hash_hmac('sha256', $lot_number, $captchaKey);
 
@@ -77,9 +77,9 @@ if (!$geetest_success) {
     exit;
 }
 
-// 发送短信验证码
-$accessKeyId = '';
-$accessKeySecret = '';
+// 发送短信验证码，请配置这里
+$accessKeyId = '0';
+$accessKeySecret = '0';
 
 $smsClient = new AliSmsClient($accessKeyId, $accessKeySecret);
 
@@ -94,12 +94,70 @@ if ($result['success']) {
     $_SESSION['sms_code'] = $code;
     $_SESSION['sms_phone'] = $phone;
     $_SESSION['sms_expire'] = time() + 300; // 5分钟有效
-    $_SESSION['last_sms_time'] = time(); // 记录发送时间用于倒计�?    
+    $_SESSION['last_sms_time'] = time(); // 记录发送时间用于倒计时
     $_SESSION['geetest_verified_time'] = time(); // 记录极验验证通过时间，用于注册时跳过验证
+    
+    // 记录日志：用户IP和生成的验证码
+    $user_ip = $_SERVER['REMOTE_ADDR'];
+    $forwarded_ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
+    $real_ip = !empty($forwarded_ip) ? $forwarded_ip : $user_ip;
+    
+    // 使用固定宽度格式对齐日志
+    $timestamp = date('Y-m-d H:i:s');
+    $log_message = sprintf(
+        "[%s] IP: %s\n%s手机号: %-11s | 验证码: %-6s | 状态: %s\n%s\n",
+        $timestamp,
+        $real_ip,
+        str_repeat(' ', 22), // 对齐第二行（22个空格对应时间戳长度）
+        $phone,
+        $code,
+        '发送成功',
+        str_repeat('-', 80) // 分隔线
+    );
+    
+    // 写入日志文件
+    $log_dir = __DIR__ . '/config';
+    $log_file = $log_dir . '/system.log';
+    
+    // 确保日志目录存在
+    if (!is_dir($log_dir)) {
+        mkdir($log_dir, 0755, true);
+    }
+    
+    file_put_contents($log_file, $log_message, FILE_APPEND | LOCK_EX);
     
     echo json_encode(['success' => true, 'message' => '验证码已发送，请在5分钟内输入']);
     exit;
 } else {
+    // 记录失败日志
+    $user_ip = $_SERVER['REMOTE_ADDR'];
+    $forwarded_ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
+    $real_ip = !empty($forwarded_ip) ? $forwarded_ip : $user_ip;
+    $error_msg = $result['error'] ?? '未知错误';
+    
+    $timestamp = date('Y-m-d H:i:s');
+    $log_message = sprintf(
+        "[%s] IP: %s\n%s手机号: %-11s | 验证码: %-6s | 状态: %s | 错误: %s\n%s\n",
+        $timestamp,
+        $real_ip,
+        str_repeat(' ', 22),
+        $phone,
+        $code,
+        '发送失败',
+        $error_msg,
+        str_repeat('-', 80)
+    );
+    
+    // 写入日志文件
+    $log_dir = __DIR__ . '/config';
+    $log_file = $log_dir . '/system.log';
+    
+    if (!is_dir($log_dir)) {
+        mkdir($log_dir, 0755, true);
+    }
+    
+    file_put_contents($log_file, $log_message, FILE_APPEND | LOCK_EX);
+    
     echo json_encode([
         'success' => false, 
         'message' => '发送失败 ' . ($result['error'] ?? '未知错误')

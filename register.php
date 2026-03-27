@@ -1,3 +1,121 @@
+<?php
+require_once __DIR__ . '/config.php';
+
+// 安全检查函数
+function checkSafetyStatus() {
+    // 检查是否存在安全锁
+    if (file_exists('Safety_locked.lock')) {
+        // 显示安全警告
+        echo '<!DOCTYPE html>
+        <html lang="zh-CN">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>安全警告 - Modern Chat</title>
+            <style>
+                * {
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                }
+                body {
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+                    min-height: 100vh;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 20px;
+                }
+                .warning-container {
+                    background: white;
+                    border-radius: 16px;
+                    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+                    max-width: 500px;
+                    width: 100%;
+                    padding: 40px;
+                    text-align: center;
+                }
+                .warning-icon {
+                    font-size: 64px;
+                    margin-bottom: 20px;
+                }
+                .warning-title {
+                    font-size: 24px;
+                    font-weight: 600;
+                    color: #ff4d4f;
+                    margin-bottom: 16px;
+                }
+                .warning-message {
+                    font-size: 16px;
+                    color: #666;
+                    line-height: 1.6;
+                    margin-bottom: 30px;
+                }
+                .update-link {
+                    display: inline-block;
+                    padding: 12px 30px;
+                    background: linear-gradient(135deg, #12b7f5 0%, #00a2e8 100%);
+                    color: white;
+                    text-decoration: none;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    transition: all 0.3s ease;
+                    box-shadow: 0 4px 15px rgba(18, 183, 245, 0.4);
+                }
+                .update-link:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 6px 20px rgba(18, 183, 245, 0.5);
+                }
+            </style>
+        </head>
+        <body>
+            <div class="warning-container">
+                <div class="warning-icon">⚠️</div>
+                <h2 class="warning-title">安全警告</h2>
+                <p class="warning-message">您的服务器正处于不安全状态，请登录系统管理员账号访问 <a href="updata.php" class="update-link">系统更新</a> 进行安全更新后即可解锁</p>
+            </div>
+        </body>
+        </html>';
+        exit;
+    }
+    
+    // 检查版本是否需要锁定
+    $distinctionVerUrl = 'https://updata.sunaookami-shiroko.top/distinction_ver.json';
+    $distinctionVerJson = @file_get_contents($distinctionVerUrl);
+    
+    if ($distinctionVerJson !== false) {
+        $distinctionVerData = json_decode($distinctionVerJson, true);
+        if ($distinctionVerData !== null && isset($distinctionVerData['version'])) {
+            $serverVer = $distinctionVerData['version'];
+            
+            // 检查本地Safety_distinction.json
+            if (file_exists('Safety_distinction.json')) {
+                $localSafetyJson = @file_get_contents('Safety_distinction.json');
+                if ($localSafetyJson !== false) {
+                    $localSafety = json_decode($localSafetyJson, true);
+                    if ($localSafety !== null && isset($localSafety['version'])) {
+                        if ($localSafety['version'] !== $serverVer) {
+                            // 版本不一致，创建安全锁
+                            file_put_contents('Safety_locked.lock', 'Locked due to version mismatch');
+                            // 重新检查安全状态
+                            checkSafetyStatus();
+                        }
+                    }
+                }
+            } else {
+                // 本地文件不存在，创建安全锁
+                file_put_contents('Safety_locked.lock', 'Locked due to missing Safety_distinction.json');
+                // 重新检查安全状态
+                checkSafetyStatus();
+            }
+        }
+    }
+}
+
+// 执行安全检查
+checkSafetyStatus();
+?>
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -440,7 +558,7 @@
         
         <?php
         if (isset($_GET['error'])) {
-            echo '<div class="error-message">' . nl2br(htmlspecialchars($_GET['error'])) . '</div>';
+            echo '<div class="error-message">' . htmlspecialchars($_GET['error']) . '</div>';
         }
         if (isset($_GET['success'])) {
             echo '<div class="success-message">' . htmlspecialchars($_GET['success']) . '</div>';

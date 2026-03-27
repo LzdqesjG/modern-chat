@@ -41,6 +41,11 @@ class InstallCommon {
      * @param array $data
      */
     public static function jsonResponse($success, $message, $data = []) {
+        // 清除缓冲区中的任何之前的输出
+        if (ob_get_length()) {
+            ob_clean();
+        }
+        
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode([
             'success' => $success,

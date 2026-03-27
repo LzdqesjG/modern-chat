@@ -78,13 +78,12 @@ try {
     }
 
     // 设置或取消管理员
-    $result = $group->setAdmin($group_id, $member_id, $is_admin);
-    if ($result) {
+    $result = $group->setAdmin($group_id, $member_id, $user_id, $is_admin);
+    if ($result['success']) {
         $action = $is_admin ? '设置为管理员' : '取消管理员';
         echo json_encode(['success' => true, 'message' => "成员已成功$action"]);
     } else {
-        $action = $is_admin ? '设置为管理员' : '取消管理员';
-        echo json_encode(['success' => false, 'message' => "$action失败"]);
+        echo json_encode(['success' => false, 'message' => $result['message']]);
     }
 } catch (Exception $e) {
     // 捕获所有异常并返回错误信息

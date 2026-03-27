@@ -38,6 +38,12 @@ try {
         echo json_encode(['success' => false, 'message' => '请选择群聊和新群主']);
         exit;
     }
+    
+    // 禁止转让给自己
+    if ($new_owner_id == $user_id) {
+        echo json_encode(['success' => false, 'message' => '不能将群聊转让给自己']);
+        exit;
+    }
 
     // 检查数据库连接
     if (!$conn) {

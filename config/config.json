@@ -12,10 +12,13 @@
     "email_verify_api": "https://api.nbhao.org/v1/email/verify",
     "email_verify_api_Request": "POST",
     "email_verify_api_Verify_parameters": "message.result",
-    "phone_sms": false,
     "System_Maintenance": 0,
-    "Random_song": false,
-    "update_source": "github",
-    "github_repo": "LzdqesjG/modern-chat",
-    "github_branch": "main"
+    "Random_song": true,
+    "ali_sms_access_key_id": "LTAI5tNgYJuKKasMuQjprcFr",
+    "ali_sms_access_key_secret": "Jf6Ewd7Q2RIV6bfuAlln6I63te6kSU",
+    "sms_verify_required": true,
+    "QR_code_color": "white",
+    "Allow_upload_directory_size": 1024,
+    "Allow_upload_directory_size_units": "MB",
+    "cors_allowed_origins": ["http://localhost", "http://127.0.0.1", "https://chat.hyacine.com.cn"]
 }

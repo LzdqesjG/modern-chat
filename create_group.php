@@ -45,6 +45,12 @@ try {
         echo json_encode(['success' => false, 'message' => '请输入群聊名称']);
         exit;
     }
+    
+    // 验证名称不包含HTML或JS代码
+    if (preg_match('/[<>]|<script|javascript:/i', $group_name)) {
+        echo json_encode(['success' => false, 'message' => '群聊名称不能包含HTML或JavaScript代码']);
+        exit;
+    }
 
     if (empty($member_ids)) {
         echo json_encode(['success' => false, 'message' => '请选择至少一个好友']);

@@ -546,8 +546,8 @@ if (empty($lot_number) || empty($captcha_output) || empty($pass_token) || empty(
         $errors[] = '请完成验证码验证';
     } else {
         // 调用极验服务器端API验证
-        $captchaId = '55574dfff9c40f2efeb5a26d6d188245';
-        $captchaKey = 'e69583b3ddcc2b114388b5e1dc213cfd';
+        $captchaId = getConfig('geetest_captcha_id', '55574dfff9c40f2efeb5a26d6d188245');
+        $captchaKey = getConfig('geetest_captcha_key', 'e69583b3ddcc2b114388b5e1dc213cfd');
         
         // 生成签名
         $sign_token = hash_hmac('sha256', $lot_number, $captchaKey);
@@ -570,12 +570,6 @@ $ch = curl_init();
         curl_setopt($ch, CURLOPT_TIMEOUT, 10); // 设置超时时间�?0�?        
         $response = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        
-        // 调试信息，记录到日志
-        error_log("Geetest 4.0 validation - URL: $apiUrl");
-        error_log("Geetest 4.0 validation - Params: " . json_encode($params));
-        error_log("Geetest 4.0 validation - HTTP Code: $http_code");
-        error_log("Geetest 4.0 validation - Response: $response");
         
         // curl_close is deprecated in PHP 8.0+, no need to explicitly close the handle
         
@@ -618,6 +612,15 @@ $ch = curl_init();
             // 用户被封禁，重定向到登录页面并显示封禁信�?            
             $ban_message = "您的账号已被封禁，原因：{$ban_info['reason']}，预计解封时间：{$ban_info['expires_at']}，如有疑问请联系管理员";
             header("Location: login.php?error=" . urlencode($ban_message));
+            exit;
+        }
+        
+        // 检查安全锁状态
+        $safety_locked = isset($_POST['safety_locked']) ? $_POST['safety_locked'] : 0;
+        
+        // 安全锁状态下，只有管理员可以登录
+        if ($safety_locked && !($result['user']['is_admin'] ?? false)) {
+            header("Location: login.php?error=" . urlencode('系统处于安全锁定状态，只有管理员账号可以登录'));
             exit;
         }
         
@@ -732,9 +735,19 @@ $stmt = $conn->prepare("DELETE FROM forget_password_requests WHERE username = ? 
             error_log("Check feedback status error: " . $e->getMessage()); 
         }
         
-        // 重定向到聊天页面
-        header('Location: chat.php');
-        exit;
+        // 检查安全锁状态
+        $safety_locked = isset($_POST['safety_locked']) ? $_POST['safety_locked'] : 0;
+        
+        // 根据安全锁状态和用户角色决定跳转页面
+        if ($safety_locked && $_SESSION['is_admin']) {
+            // 安全锁状态下，管理员跳转到更新页面
+            header('Location: updata.php');
+            exit;
+        } else {
+            // 正常情况下跳转到聊天页面
+            header('Location: chat.php');
+            exit;
+        }
     } else {
         // 登录失败，记录失败的登录尝试
         logLoginAttempt($conn, $client_ip, false);
