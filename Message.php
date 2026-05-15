@@ -21,8 +21,8 @@ class Message {
             }
             
             $stmt = $this->conn->prepare(
-                "INSERT INTO messages (sender_id, receiver_id, content, type, status) 
-                 VALUES (?, ?, ?, 'text', 'sent')"
+                "INSERT INTO messages (sender_id, receiver_id, content, type, status, created_at) 
+                 VALUES (?, ?, ?, 'text', 'sent', NOW())"
             );
             $stmt->execute([$sender_id, $receiver_id, $filtered_content]);
             
@@ -37,29 +37,23 @@ class Message {
         }
     }
     
-    // 发送文件消息（$audio_duration 语音时长秒，$video_duration 视频时长秒，$video_cover 视频封面路径，均可选）
-    public function sendFileMessage($sender_id, $receiver_id, $file_path, $file_name, $file_size, $file_type = null, $audio_duration = 0, $video_duration = 0, $video_cover = null) {
+    // 发送文件消息
+    public function sendFileMessage($sender_id, $receiver_id, $file_path, $file_name, $file_size, $file_type = null) {
         try {
             // 确保必要的表和列存在
             $this->ensureTablesExist();
             
-            $audio_duration = (int) $audio_duration;
-            if ($audio_duration < 0) $audio_duration = 0;
-            $video_duration = (int) $video_duration;
-            if ($video_duration < 0) $video_duration = 0;
-            $video_cover = $video_cover !== null && $video_cover !== '' ? (string) $video_cover : null;
-            
             $stmt = $this->conn->prepare(
-                "INSERT INTO messages (sender_id, receiver_id, file_path, file_name, file_size, file_type, audio_duration, video_duration, video_cover, type, status) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'file', 'sent')"
+                "INSERT INTO messages (sender_id, receiver_id, file_path, file_name, file_size, file_type, type, status, created_at) 
+                 VALUES (?, ?, ?, ?, ?, ?, 'file', 'sent', NOW())"
             );
-            $stmt->execute([$sender_id, $receiver_id, $file_path, $file_name, $file_size, $file_type, $audio_duration, $video_duration, $video_cover]);
+            $stmt->execute([$sender_id, $receiver_id, $file_path, $file_name, $file_size, $file_type]);
             
             $message_id = $this->conn->lastInsertId();
             $this->updateSession($sender_id, $receiver_id, $message_id);
             $this->updateUnreadMessageCount($receiver_id, $sender_id, $message_id);
             
-            return ['success' => true, 'message_id' => $message_id, 'audio_duration' => $audio_duration];
+            return ['success' => true, 'message_id' => $message_id];
         } catch(PDOException $e) {
             error_log("Send File Message Error: " . $e->getMessage());
             return ['success' => false, 'message' => '文件发送失败'];
@@ -106,62 +100,15 @@ class Message {
             $this->conn->exec($sql);
             
             // 确保messages表有file_type列
-            $stmt = $this->conn->prepare("SHOW COLUMNS FROM messages LIKE 'file_type'");
-            $stmt->execute();
+            $stmt = $this->conn->query("SHOW COLUMNS FROM messages LIKE 'file_type'");
             if (!$stmt->fetch()) {
                 $this->conn->exec("ALTER TABLE messages ADD COLUMN file_type VARCHAR(50) NULL");
             }
-            // 确保messages表有audio_duration列（语音时长，秒）
-            $stmt = $this->conn->prepare("SHOW COLUMNS FROM messages LIKE 'audio_duration'");
-            $stmt->execute();
-            if (!$stmt->fetch()) {
-                $this->conn->exec("ALTER TABLE messages ADD COLUMN audio_duration INT UNSIGNED DEFAULT 0");
-            }
-            // 确保messages表有video_duration、video_cover列（视频时长秒、视频封面路径）
-            $stmt = $this->conn->prepare("SHOW COLUMNS FROM messages LIKE 'video_duration'");
-            $stmt->execute();
-            if (!$stmt->fetch()) {
-                $this->conn->exec("ALTER TABLE messages ADD COLUMN video_duration INT UNSIGNED DEFAULT 0");
-            }
-            $stmt = $this->conn->prepare("SHOW COLUMNS FROM messages LIKE 'video_cover'");
-            $stmt->execute();
-            if (!$stmt->fetch()) {
-                $this->conn->exec("ALTER TABLE messages ADD COLUMN video_cover VARCHAR(512) NULL");
-            }
             
             // 确保group_messages表有file_type列
-            $stmt = $this->conn->prepare("SHOW COLUMNS FROM group_messages LIKE 'file_type'");
-            $stmt->execute();
+            $stmt = $this->conn->query("SHOW COLUMNS FROM group_messages LIKE 'file_type'");
             if (!$stmt->fetch()) {
                 $this->conn->exec("ALTER TABLE group_messages ADD COLUMN file_type VARCHAR(50) NULL");
-            }
-            
-            // 确保sessions表有is_pinned列
-            $stmt = $this->conn->prepare("SHOW COLUMNS FROM sessions LIKE 'is_pinned'");
-            $stmt->execute();
-            if (!$stmt->fetch()) {
-                $this->conn->exec("ALTER TABLE sessions ADD COLUMN is_pinned BOOLEAN DEFAULT FALSE");
-            }
-            
-            // 确保sessions表有pinned_at列
-            $stmt = $this->conn->prepare("SHOW COLUMNS FROM sessions LIKE 'pinned_at'");
-            $stmt->execute();
-            if (!$stmt->fetch()) {
-                $this->conn->exec("ALTER TABLE sessions ADD COLUMN pinned_at TIMESTAMP NULL");
-            }
-            
-            // 确保messages表有is_deleted列
-            $stmt = $this->conn->prepare("SHOW COLUMNS FROM messages LIKE 'is_deleted'");
-            $stmt->execute();
-            if (!$stmt->fetch()) {
-                $this->conn->exec("ALTER TABLE messages ADD COLUMN is_deleted TINYINT(1) DEFAULT 0");
-            }
-            
-            // 确保group_messages表有is_deleted列
-            $stmt = $this->conn->prepare("SHOW COLUMNS FROM group_messages LIKE 'is_deleted'");
-            $stmt->execute();
-            if (!$stmt->fetch()) {
-                $this->conn->exec("ALTER TABLE group_messages ADD COLUMN is_deleted TINYINT(1) DEFAULT 0");
             }
         } catch (PDOException $e) {
             error_log("Ensure tables exist error: " . $e->getMessage());
@@ -169,25 +116,19 @@ class Message {
     }
     
     // 获取聊天记录
-    public function getChatHistory($user1_id, $user2_id, $limit = 5000, $offset = 0) {
+    public function getChatHistory($user1_id, $user2_id, $limit = 50, $offset = 0) {
         try {
-            // 确保必要的表和列存在
-            $this->ensureTablesExist();
-            
             $stmt = $this->conn->prepare(
                 "SELECT m.*, u.username as sender_username, u.avatar 
                  FROM messages m 
                  JOIN users u ON m.sender_id = u.id
-                 WHERE ((m.sender_id = ? AND m.receiver_id = ?) OR (m.sender_id = ? AND m.receiver_id = ?))
-                 AND (m.is_deleted = 0 OR m.sender_id != ?)
-                 ORDER BY m.created_at DESC 
+                 WHERE (m.sender_id = ? AND m.receiver_id = ?) OR (m.sender_id = ? AND m.receiver_id = ?) 
+                 ORDER BY m.created_at ASC 
                  LIMIT ? OFFSET ?"
             );
-            $stmt->execute([$user1_id, $user2_id, $user2_id, $user1_id, $user1_id, $limit, $offset]);
+            $stmt->execute([$user1_id, $user2_id, $user2_id, $user1_id, $limit, $offset]);
             
-            $messages = $stmt->fetchAll();
-            
-            return array_reverse($messages); // 按时间正序返回
+            return $stmt->fetchAll(); // 直接按时间正序返回
         } catch(PDOException $e) {
             error_log("Get Chat History Error: " . $e->getMessage());
             return [];
@@ -278,48 +219,18 @@ class Message {
                     m.type,
                     m.created_at as message_time,
                     s.unread_count,
-                    s.is_pinned,
-                    s.pinned_at,
                     s.updated_at
                  FROM sessions s
                  JOIN users u ON s.friend_id = u.id
                  LEFT JOIN messages m ON s.last_message_id = m.id
                  WHERE s.user_id = ?
-                 ORDER BY s.is_pinned DESC, s.pinned_at DESC, s.updated_at DESC"
+                 ORDER BY s.updated_at DESC"
             );
             $stmt->execute([$user_id]);
             return $stmt->fetchAll();
         } catch(PDOException $e) {
             error_log("Get Sessions Error: " . $e->getMessage());
             return [];
-        }
-    }
-    
-    // 置顶会话
-    public function pinSession($session_id, $user_id) {
-        try {
-            $stmt = $this->conn->prepare(
-                "UPDATE sessions SET is_pinned = TRUE, pinned_at = NOW() WHERE id = ? AND user_id = ?"
-            );
-            $stmt->execute([$session_id, $user_id]);
-            return true;
-        } catch(PDOException $e) {
-            error_log("Pin Session Error: " . $e->getMessage());
-            return false;
-        }
-    }
-    
-    // 取消置顶
-    public function unpinSession($session_id, $user_id) {
-        try {
-            $stmt = $this->conn->prepare(
-                "UPDATE sessions SET is_pinned = FALSE, pinned_at = NULL WHERE id = ? AND user_id = ?"
-            );
-            $stmt->execute([$session_id, $user_id]);
-            return true;
-        } catch(PDOException $e) {
-            error_log("Unpin Session Error: " . $e->getMessage());
-            return false;
         }
     }
     
@@ -379,7 +290,28 @@ class Message {
     }
     
     /**
-     * 撤回好友消息
+     * 检查消息是否属于好友会话
+     * @param int $message_id 消息ID
+     * @param int $user_id 当前用户ID
+     * @param int $friend_id 好友ID
+     * @return bool 是否属于该好友会话
+     */
+    public function isMessageInFriendChat($message_id, $user_id, $friend_id) {
+        try {
+            $stmt = $this->conn->prepare(
+                "SELECT * FROM messages WHERE id = ? 
+                 AND ((sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?))"
+            );
+            $stmt->execute([$message_id, $user_id, $friend_id, $friend_id, $user_id]);
+            return $stmt->rowCount() > 0;
+        } catch(PDOException $e) {
+            error_log("Is Message In Friend Chat Error: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * 撤回消息
      * @param int $message_id 消息ID
      * @param int $user_id 当前用户ID
      * @return array 结果
@@ -419,6 +351,40 @@ class Message {
         } catch(PDOException $e) {
             error_log("Recall Message Error: " . $e->getMessage());
             return ['success' => false, 'message' => '撤回消息失败'];
+        }
+    }
+    
+    /**
+     * 置顶会话
+     * @param int $session_id 会话ID
+     * @param int $user_id 用户ID
+     * @return bool 是否成功
+     */
+    public function pinSession($session_id, $user_id) {
+        try {
+            $stmt = $this->conn->prepare("UPDATE sessions SET is_pinned = 1 WHERE id = ? AND user_id = ?");
+            $stmt->execute([$session_id, $user_id]);
+            return true;
+        } catch(PDOException $e) {
+            error_log("Pin Session Error: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * 取消置顶会话
+     * @param int $session_id 会话ID
+     * @param int $user_id 用户ID
+     * @return bool 是否成功
+     */
+    public function unpinSession($session_id, $user_id) {
+        try {
+            $stmt = $this->conn->prepare("UPDATE sessions SET is_pinned = 0 WHERE id = ? AND user_id = ?");
+            $stmt->execute([$session_id, $user_id]);
+            return true;
+        } catch(PDOException $e) {
+            error_log("Unpin Session Error: " . $e->getMessage());
+            return false;
         }
     }
 }

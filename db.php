@@ -62,6 +62,11 @@ class Database {
 // 创建数据库实例
 $db = new Database();
 try {
+    // 检查PDO驱动是否可用
+    if (!extension_loaded('pdo') || !extension_loaded('pdo_mysql')) {
+        throw new Exception("PHP PDO MySQL 驱动未安装或未启用。请检查 PHP 配置文件 (php.ini) 中的 extension=pdo_mysql 配置。");
+    }
+    
     $conn = $db->connect();
 } catch (Exception $e) {
     error_log("Global database connection error: " . $e->getMessage());

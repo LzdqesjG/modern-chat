@@ -44,9 +44,14 @@ class User {
             // 哈希密码
             $hashedPassword = password_hash($password, PASSWORD_DEFAULT, ['cost' => 12]);
             
-            // 插入新用户
-            $stmt = $this->conn->prepare("INSERT INTO users (username, email, password, phone) VALUES (?, ?, ?, ?)");
-            $stmt->execute([$username, $email, $hashedPassword, $phone]);
+            // 插入新用户，处理空手机号
+            if (!empty($phone)) {
+                $stmt = $this->conn->prepare("INSERT INTO users (username, email, password, phone) VALUES (?, ?, ?, ?)");
+                $stmt->execute([$username, $email, $hashedPassword, $phone]);
+            } else {
+                $stmt = $this->conn->prepare("INSERT INTO users (username, email, password) VALUES (?, ?, ?)");
+                $stmt->execute([$username, $email, $hashedPassword]);
+            }
             
             $user_id = $this->conn->lastInsertId();
             
@@ -196,6 +201,11 @@ class User {
             $allowed_fields = ['username', 'email', 'phone', 'signature', 'gender', 'birthday', 'location'];
             $updates = [];
             $params = [];
+            
+            // 支持 name 作为 username 的别名
+            if (isset($data['name']) && !isset($data['username'])) {
+                $data['username'] = $data['name'];
+            }
             
             foreach ($allowed_fields as $field) {
                 if (isset($data[$field])) {

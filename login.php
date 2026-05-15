@@ -4,8 +4,8 @@ require_once 'db.php';
 
 // 检查安全状态
 function checkSafetyStatus() {
-    $safety_lock_file = 'Safety_locked.lock';
-    $distinction_file = 'distinction_ver.json';
+    $safety_lock_file = __DIR__ . '/Safety_locked.lock';
+    $distinction_file = __DIR__ . '/distinction_ver.json';
     
     // 如果安全锁已存在，直接返回锁定状态
     if (file_exists($safety_lock_file)) {
@@ -686,7 +686,7 @@ $is_safety_locked = checkSafetyStatus();
         }
     </style>
     <!-- 极验验证码JS库 -->
-    <script src="gt4.js"></script>
+    <script src="https://static.geetest.com/v4/gt4.js"></script>
 </head>
 <body>
     <div class="container">
@@ -825,13 +825,13 @@ $is_safety_locked = checkSafetyStatus();
         <!-- 扫码登录（仅在PC端显示） -->
         <?php if (!$is_mobile) { ?>
         <div class="login-method" id="scan-login">
-            <div class="qr-container" style="background-color: black; color: white; padding: 30px; border-radius: 12px;">
+            <div class="qr-container" style="background-color: white; color: black; padding: 30px; border-radius: 12px; border: 1px solid #e0e0e0;">
                 <div id="qr-code"></div>
-                <div class="qr-info" style="color: white;">
+                <div class="qr-info" style="color: #666;">
                     <p>使用手机APP扫描二维码登录</p>
                     <p>有效期 <span class="countdown" id="countdown">5:00</span></p>
                 </div>
-                <div class="status-message status-pending" id="status-message" style="background-color: rgba(255, 255, 255, 0.1); color: white; border-color: rgba(255, 255, 255, 0.2);">
+                <div class="status-message status-pending" id="status-message">
                     等待手机确认...
                 </div>
             </div>
@@ -1009,36 +1009,14 @@ $is_safety_locked = checkSafetyStatus();
                     // 将浏览器指纹添加到二维码内容中
                     const qrContentWithFingerprint = data.qr_content + '&browser_fingerprint=' + encodeURIComponent(fingerprint);
                     
-                    // 从配置文件获取二维码颜色设置，默认为黑色
-            let qrColor = '#ffffff'; // 默认二维码颜色为白色
-            let bgColor = '#000000'; // 默认背景颜色为黑色
-            
-            // 尝试获取配置的二维码颜色
-            try {
-                // 发送请求获取配置
-                fetch('get_config.php?key=QR_code_color')
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.value === 'white') {
-                            qrColor = '#000000'; // 白色背景下使用黑色二维码
-                            bgColor = '#ffffff'; // 背景颜色为白色
-                        }
-                    })
-                    .catch(error => {
-                        console.error('获取二维码颜色配置失败:', error);
-                    });
-            } catch (error) {
-                console.error('获取二维码颜色配置失败:', error);
-            }
-            
-            // 根据配置生成二维码
+                    // 根据配置生成二维码 - 使用白底黑码
             QRCode.toCanvas(canvas, qrContentWithFingerprint, {
-                width: 280, // 进一步增加二维码尺寸，提高清晰度
-                margin: 8, // 进一步增加边距以提高识别率
-                errorCorrectionLevel: 'H', // 使用最高纠错级别
+                width: 280,
+                margin: 8,
+                errorCorrectionLevel: 'H',
                 color: {
-                    dark: qrColor, // 二维码颜色
-                    light: bgColor // 背景颜色
+                    dark: '#000000', // 二维码颜色为黑色
+                    light: '#ffffff' // 背景颜色为白色
                 }
             }, function(error) {
                         if (error) {
@@ -1051,11 +1029,12 @@ $is_safety_locked = checkSafetyStatus();
                             hint.style.top = '10px';
                             hint.style.left = '50%';
                             hint.style.transform = 'translateX(-50%)';
-                            hint.style.color = 'white';
+                            hint.style.color = '#666';
                             hint.style.fontSize = '12px';
-                            hint.style.background = 'rgba(0, 0, 0, 0.6)';
+                            hint.style.background = 'rgba(255, 255, 255, 0.9)';
                             hint.style.padding = '4px 8px';
                             hint.style.borderRadius = '4px';
+                            hint.style.border = '1px solid #e0e0e0';
                             hint.textContent = '请将二维码完整对准摄像头';
                             qrCode.appendChild(hint);
                         }
@@ -1184,7 +1163,8 @@ $is_safety_locked = checkSafetyStatus();
         
         // 初始化极验验证码
         initGeetest4({
-            captchaId: '55574dfff9c40f2efeb5a26d6d188245'
+            captchaId: '55574dfff9c40f2efeb5a26d6d188245',
+            https: true
         }, function (captcha) {
             // captcha为验证码实例
             geetestCaptcha = captcha;

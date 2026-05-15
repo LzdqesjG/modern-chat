@@ -130,7 +130,7 @@ class Lunar {
                 $zodiacIndex = ($year - 1900) % 12;
                 $zodiac = self::$zodiacs[$zodiacIndex];
                 
-                $config['title_template'] = "🏮 {$year}年{$zodiac}新春倒计时 🏮";
+                $config['title_template'] = "【 {$year}年{$zodiac}新春倒计时 】";
             }
             
             // 节日文字显示范围：春节 到 元宵节后一天(00:00:00)
@@ -180,7 +180,7 @@ class Lunar {
                     $zodiac = self::$zodiacs[$zodiacIndex];
                     
                     $config['target_timestamp'] = $sfTimestamp;
-                    $config['title_template'] = "🏮 {$year}年{$zodiac}新春倒计时 🏮";
+                    $config['title_template'] = "【 {$year}年{$zodiac}新春倒计时 】";
                     break;
                 }
             }

@@ -51,7 +51,7 @@ function Config(config) {
 Config.prototype = {
     apiServers: ['gcaptcha4.geetest.com','gcaptcha4.geevisit.com','gcaptcha4.gsensebot.com'],
     staticServers: ["static.geetest.com",'static.geevisit.com'],
-    protocol: 'http://',
+    protocol: 'https://',
     typePath: '/load',
     fallback_config: {
         bypass: {

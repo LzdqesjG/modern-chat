@@ -21,7 +21,7 @@ require_once 'Group.php';
 // 安全检查函数
 function checkSafetyStatus() {
     // 检查是否存在安全锁
-    if (file_exists('Safety_locked.lock')) {
+    if (file_exists(__DIR__ . '/Safety_locked.lock')) {
         // 显示安全警告
         echo '<!DOCTYPE html>
         <html lang="zh-CN">
@@ -88,7 +88,7 @@ function checkSafetyStatus() {
         </head>
         <body>
             <div class="warning-container">
-                <div class="warning-icon">⚠️</div>
+                <div class="warning-icon"><svg viewBox="0 0 24 24" width="64" height="64" fill="#ff9800"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg></div>
                 <h2 class="warning-title">安全警告</h2>
                 <p class="warning-message">您的服务器正处于不安全状态，请登录系统管理员账号访问 <a href="updata.php" class="update-link">系统更新</a> 进行安全更新后即可解锁</p>
             </div>
@@ -114,7 +114,7 @@ function checkSafetyStatus() {
                     if ($localSafety !== null && isset($localSafety['version'])) {
                         if ($localSafety['version'] !== $serverVer) {
                             // 版本不一致，创建安全锁
-                            file_put_contents('Safety_locked.lock', 'Locked due to version mismatch');
+                            file_put_contents(__DIR__ . '/Safety_locked.lock', 'Locked due to version mismatch');
                             // 重新检查安全状态
                             checkSafetyStatus();
                         }
@@ -122,7 +122,7 @@ function checkSafetyStatus() {
                 }
             } else {
                 // 本地文件不存在，创建安全锁
-                file_put_contents('Safety_locked.lock', 'Locked due to missing Safety_distinction.json');
+                file_put_contents(__DIR__ . '/Safety_locked.lock', 'Locked due to missing Safety_distinction.json');
                 // 重新检查安全状态
                 checkSafetyStatus();
             }
@@ -2969,12 +2969,12 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                         </div>
                         <div class="video-controls-row">
                             <div class="video-main-controls">
-                                <button class="video-control-btn" id="video-play-btn" title="播放/暂停">▶</button>
+                                <button class="video-control-btn" id="video-play-btn" title="播放/暂停"><svg viewBox="0 0 24 24" width="20" height="20" fill="white"><path d="M8 5v14l11-7z"/></svg></button>
 
-                                <button class="video-control-btn" id="video-fullscreen-btn" title="放大/缩小" onclick="toggleVideoFullscreen()">⛶</button>
+                                <button class="video-control-btn" id="video-fullscreen-btn" title="放大/缩小" onclick="toggleVideoFullscreen()"><svg viewBox="0 0 24 24" width="20" height="20" fill="white"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg></button>
                             </div>
                             <div class="video-volume-control">
-                                <button class="video-control-btn" id="video-mute-btn" title="静音">🔊</button>
+                                <button class="video-control-btn" id="video-mute-btn" title="静音"><svg viewBox="0 0 24 24" width="20" height="20" fill="white"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-3.97zm-2.5-.75c.94 0 1.7-.76 1.7-1.7s-.76-1.7-1.7-1.7-1.7.76-1.7 1.7.76 1.7 1.7 1.7z"/></svg></button>
                                 <input type="range" class="volume-slider" id="volume-slider" min="0" max="1" step="0.01" value="1">
                             </div>
                         </div>
@@ -3522,7 +3522,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                     ?>
                     <div class="chat-item <?php echo $is_active ? 'active' : ''; ?>" data-group-id="<?php echo $group_item['id']; ?>" data-chat-type="group">
                         <div class="chat-avatar group">
-                            👥
+                            <svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
                         </div>
                         <div class="chat-info">
                             <div class="chat-name">
@@ -3611,7 +3611,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                         </div>
                     <?php elseif ($chat_type === 'group' && $selected_group): ?>
                         <div class="chat-avatar group" style="margin-right: 12px;">
-                            👥
+                            <svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
                         </div>
                         <div class="chat-header-info">
                             <div class="chat-header-name"><?php echo $selected_group['name']; ?></div>
@@ -3642,7 +3642,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 <!-- 消息容器 -->
                 <div class="messages-container" id="messages-container">
                     <!-- 返回底部按钮 -->
-                    <button class="scroll-to-bottom-btn" id="scroll-to-bottom-btn" onclick="scrollToBottom()" title="回到底部">⬇️</button>
+                    <button class="scroll-to-bottom-btn" id="scroll-to-bottom-btn" onclick="scrollToBottom()" title="回到底部"><svg viewBox="0 0 24 24" width="20" height="20" fill="white"><path d="M7 10l5 5 5-5z"/></svg></button>
                     <!-- 初始聊天记录 -->
                     <?php foreach ($chat_history as $msg): ?>
                         <?php $is_sent = $msg['sender_id'] == $user_id; ?>
@@ -3682,7 +3682,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                                             // 音频类型 - 作为普通文件显示
                                             echo "<div class='message-media'>";
                                             echo "<div class='message-file'>";
-                                            echo "<span class='file-icon' style='font-size: 24px;'>🎵</span>";
+                                            echo "<svg class='file-icon' viewBox='0 0 24 24' width='24' height='24' fill='currentColor'><path d='M8 5v14l11-7z'/></svg>";
                                             echo "<div class='file-info' style='flex: 1;'>";
                                             echo "<h4 style='margin: 0; font-size: 14px; font-weight: 500;'>".htmlspecialchars($file_name)."</h4>";
                                             echo "<p style='margin: 2px 0 0 0; font-size: 12px; color: #666;'>".round($file_size / 1024, 2)." KB</p>";
@@ -3703,7 +3703,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                                         ?>
                                             <div class="message-file" onclick="addDownloadTask('<?php echo htmlspecialchars($file_name, ENT_QUOTES); ?>', '<?php echo htmlspecialchars($file_path, ENT_QUOTES); ?>', <?php echo $file_size; ?>, 'file')" style="position: relative; background: #f0f0f0; border-radius: 8px; padding: 12px; display: flex; align-items: center; gap: 12px; cursor: pointer;">
                                                 <div class="message-file-link" data-file-name="<?php echo htmlspecialchars($file_name); ?>" data-file-size="<?php echo $file_size; ?>" data-file-type="file" data-file-path="<?php echo htmlspecialchars($file_path); ?>" style="display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; flex: 1;">
-                                                    <span class="file-icon" style="font-size: 24px;">📁</span>
+                                                    <svg class="file-icon" viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
                                                     <div class="file-info" style="flex: 1;">
                                                         <h4 style="margin: 0; font-size: 14px; font-weight: 500;"><?php echo htmlspecialchars($file_name); ?></h4>
                                                         <p style="margin: 2px 0 0 0; font-size: 12px; color: #666;"><?php echo round($file_size / 1024, 2); ?> KB</p>
@@ -3796,7 +3796,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                                         ?>
                                             <div class="message-file" onclick="addDownloadTask('<?php echo htmlspecialchars($file_name, ENT_QUOTES); ?>', '<?php echo htmlspecialchars($file_path, ENT_QUOTES); ?>', <?php echo $file_size; ?>, 'file')" style="position: relative; background: #f0f0f0; border-radius: 8px; padding: 12px; display: flex; align-items: center; gap: 12px; cursor: pointer;">
                                                 <div class="message-file-link" data-file-name="<?php echo htmlspecialchars($file_name); ?>" data-file-size="<?php echo $file_size; ?>" data-file-type="file" data-file-path="<?php echo htmlspecialchars($file_path); ?>" style="display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; flex: 1;">
-                                                    <span class="file-icon" style="font-size: 24px;">📁</span>
+                                                    <svg class="file-icon" viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
                                                     <div class="file-info" style="flex: 1;">
                                                         <h4 style="margin: 0; font-size: 14px; font-weight: 500;"><?php echo htmlspecialchars($file_name); ?></h4>
                                                         <p style="margin: 2px 0 0 0; font-size: 12px; color: #666;"><?php echo round($file_size / 1024, 2); ?> KB</p>
@@ -3950,7 +3950,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
     <!-- 登录成功提示 -->
     <div class="modal" id="success-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 2000; flex-direction: column; align-items: center; justify-content: center;">
         <div style="background: white; padding: 20px; border-radius: 12px; width: 90%; max-width: 300px; text-align: center;">
-            <div style="font-size: 48px; margin-bottom: 15px;">✅</div>
+            <svg viewBox="0 0 24 24" width="48" height="48" fill="#4caf50" style="margin-bottom: 15px;"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
             <h3 style="margin-bottom: 10px; color: #333;">登录成功</h3>
             <p style="margin-bottom: 20px; color: #666; font-size: 14px;">已成功在PC端登录</p>
             <button onclick="closeSuccessModal()" style="padding: 10px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">确定</button>
@@ -4483,6 +4483,25 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             try {
                 const deviceType = detectDeviceType();
                 
+                // 先获取当前用户的 vkey
+                const vkeyResponse = await fetch('vkey_manager.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        'action': 'get'
+                    })
+                });
+                
+                const vkeyResult = await vkeyResponse.json();
+                if (!vkeyResult.success || !vkeyResult.vkey) {
+                    alert('获取密钥失败，请重试');
+                    return;
+                }
+                
+                const vkey = vkeyResult.vkey;
+                
                 const response = await fetch('scan_login.php', {
                     method: 'POST',
                     headers: {
@@ -4490,7 +4509,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                     },
                     body: new URLSearchParams({
                         'qid': currentQid,
-                        'user': '<?php echo $username; ?>',
+                        'vkey': vkey,
                         'source': 'mobilechat.php',
                         'app': deviceType
                     })
@@ -4668,7 +4687,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 return `
                     <div class="mention-item" data-id="${member.id}" data-username="${member.username}" data-is-all="${isAll}">
                         <div class="mention-avatar">
-                            ${isAll ? '👥' : member.avatar ? `<img src="${member.avatar}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` : member.username.charAt(0).toUpperCase()}
+                            ${isAll ? '<svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>' : member.avatar ? `<img src="${member.avatar}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` : member.username.charAt(0).toUpperCase()}
                         </div>
                         <div class="mention-info">
                             <div class="mention-username ${isAll ? 'mention-all' : ''}">${member.username}</div>
@@ -7068,7 +7087,13 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                                             
                                             if (!data.success) {
                                                 showNotification('消息发送失败', 'error');
-                                            } else if (data.message && data.message.file_path) {
+                                            } else {
+                                                // 检查是否为秒传
+                                                if (data.data && data.data.is_duplicate) {
+                                                    showNotification('文件重复，已秒传！', 'success');
+                                                }
+                                                
+                                                if (data.message && data.message.file_path) {
                                                 // 更新DOM中的音频源为服务器路径，防止本地缓存失效导致404
                                                 const uploadedMessageId = data.message_id; // 服务器返回的消息ID
                                                 
@@ -7109,6 +7134,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                                                 
                                                 // 强制将文件路径保存到 localStorage 映射（如果需要）
                                                 // 但最重要的是更新 HTML 中的 data-file-path
+                                                }
                                             }
                                         } catch (e) {
                                             console.error('解析响应失败', e);
@@ -7210,7 +7236,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 
                 // 如果转义后消息为空，不发送
                 if (!message) {
-                    showNotification('消息内容不能为空 ❌', 'error');
+                    showNotification('消息内容不能为空 <svg viewBox="0 0 24 24" width="14" height="14" fill="#f44336"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>', 'error');
                     return;
                 }
                 
@@ -7607,10 +7633,10 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             let html = '';
             for (const task of downloadTasks) {
                 // 根据文件类型选择图标
-                let fileIcon = '📁';
-                if (task.fileType === 'image') fileIcon = '🖼️';
-                else if (task.fileType === 'audio') fileIcon = '🎵';
-                else if (task.fileType === 'video') fileIcon = '🎬';
+                let fileIcon = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>';
+                if (task.fileType === 'image') fileIcon = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>';
+                else if (task.fileType === 'audio') fileIcon = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+                else if (task.fileType === 'video') fileIcon = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
 
                 // 状态文本
                 let statusText = '';
@@ -8580,7 +8606,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                     </style>`;
                 } else {
                     html = `<div style="text-align: center; color: #6c757d; padding: 40px 20px; background: white; border-radius: 12px; margin: 0;">
-                        <div style="font-size: 48px; margin-bottom: 15px;">👥</div>
+                        <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor" style="margin-bottom: 15px;"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
                         <p style="font-size: 16px; margin: 0;">暂无好友</p>
                         <p style="font-size: 14px; margin-top: 8px; color: #999;">添加好友后即可创建群聊</p>
                     </div>`;
@@ -8591,7 +8617,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             .catch(error => {
                 console.error('获取好友列表失败:', error);
                 friendsContainer.innerHTML = `<div style="text-align: center; color: #ff6b6b; padding: 40px 20px; background: white; border-radius: 12px; margin: 0;">
-                    <div style="font-size: 48px; margin-bottom: 15px;">❌</div>
+                    <svg viewBox="0 0 24 24" width="48" height="48" fill="#f44336" style="margin-bottom: 15px;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
                     <p style="font-size: 16px; margin: 0;">加载失败</p>
                     <p style="font-size: 14px; margin-top: 8px; color: #999;">请检查网络连接后重试</p>
                     <button onclick="loadFriendsForGroup()" style="
@@ -8910,7 +8936,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             // 检查是否已达到最大重试次数
             if (fileRetryCounter[filePath] >= MAX_RETRIES) {
                 // 达到最大重试次数，显示已清理提示
-                fileLink.innerHTML = `<span class="file-icon">📁</span><div class="file-info"><h4>文件不存在或已被清理</h4><p>${fileName}</p></div>`;
+                fileLink.innerHTML = `<svg class="file-icon" viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg><div class="file-info"><h4>文件不存在或已被清理</h4><p>${fileName}</p></div>`;
                 fileLink.removeAttribute('href');
                 fileLink.style.pointerEvents = 'none';
                 fileLink.style.opacity = '0.6';
@@ -9647,11 +9673,11 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                     videoElement.play().catch(error => {
                         console.error('播放视频失败:', error);
                     });
-                    playBtn.textContent = '⏸';
+                    playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
                     console.log('切换为播放状态');
                 } else {
                     videoElement.pause();
-                    playBtn.textContent = '▶';
+                    playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
                     console.log('切换为暂停状态');
                 }
             };
@@ -9669,11 +9695,11 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             
             // 视频播放状态变化
             videoElement.addEventListener('play', function() {
-                playBtn.textContent = '⏸';
+                playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
             });
             
             videoElement.addEventListener('pause', function() {
-                playBtn.textContent = '▶';
+                playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
             });
             
             // 本地formatTime函数，避免被其他formatTime函数覆盖
@@ -9717,9 +9743,9 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             volumeSlider.oninput = function() {
                 videoElement.volume = this.value;
                 if (this.value === 0) {
-                    muteBtn.textContent = '🔇';
+                    muteBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="white"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-3.97zM3 9v6h4l5 5V4L7 9H3zm13.5 3c0 1.38-1.12 2.5-2.5 2.5s-2.5-1.12-2.5-2.5 1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5z"/></svg>';
                 } else {
-                    muteBtn.textContent = '🔊';
+                    muteBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="white"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-3.97zm-2.5-.75c.94 0 1.7-.76 1.7-1.7s-.76-1.7-1.7-1.7-1.7.76-1.7 1.7.76 1.7 1.7 1.7z"/></svg>';
                 }
             };
             
@@ -9728,17 +9754,17 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 if (videoElement.volume > 0) {
                     volumeSlider.value = 0;
                     videoElement.volume = 0;
-                    muteBtn.textContent = '🔇';
+                    muteBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="white"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-3.97zM3 9v6h4l5 5V4L7 9H3zm13.5 3c0 1.38-1.12 2.5-2.5 2.5s-2.5-1.12-2.5-2.5 1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5z"/></svg>';
                 } else {
                     volumeSlider.value = 1;
                     videoElement.volume = 1;
-                    muteBtn.textContent = '🔊';
+                    muteBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="white"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-3.97zm-2.5-.75c.94 0 1.7-.76 1.7-1.7s-.76-1.7-1.7-1.7-1.7.76-1.7 1.7.76 1.7 1.7 1.7z"/></svg>';
                 }
             };
             
             // 视频结束时重置
             videoElement.addEventListener('ended', function() {
-                playBtn.textContent = '▶';
+                playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
                 videoElement.currentTime = 0;
             });
             
@@ -10102,7 +10128,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             if (videoElement) videoElement.pause();
             
             // 重置播放按钮和进度条
-            if (playBtn) playBtn.textContent = '▶';
+            if (playBtn) playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
             if (progress) progress.style.width = '0%';
             if (currentTimeEl) currentTimeEl.textContent = '0:00';
             
@@ -10922,7 +10948,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                     // 音频类型 - 作为普通文件显示
                     contentHtml = `<div class='message-media' style='position: relative;'>
                         <div class='message-file' onclick="event.preventDefault(); addDownloadTask('${file_name}', '${file_path}', ${file_size}, 'audio');">
-                            <span class='file-icon' style='font-size: 24px;'>🎵</span>
+                            <svg class='file-icon' viewBox='0 0 24 24' width='24' height='24' fill='currentColor'><path d='M8 5v14l11-7z'/></svg>
                             <div class='file-info' style='flex: 1;'>
                                 <h4 style='margin: 0; font-size: 14px; font-weight: 500;'>${file_name}</h4>
                                 <p style='margin: 2px 0 0 0; font-size: 12px; color: #666;'>${(file_size / 1024).toFixed(2)} KB</p>
@@ -10980,7 +11006,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 } else {
                 // 其他文件类型
                 contentHtml = `<div class='message-file' onclick="event.preventDefault(); addDownloadTask('${file_name}', '${file_path}', ${file_size}, 'file');">
-                    <span class='file-icon' style='font-size: 24px;'>📁</span>
+                    <svg class='file-icon' viewBox='0 0 24 24' width='24' height='24' fill='currentColor'><path d='M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z'/></svg>
                     <div class='file-info' style='flex: 1;'>
                         <h4 style='margin: 0; font-size: 14px; font-weight: 500;'>${file_name}</h4>
                         <p style='margin: 2px 0 0 0; font-size: 12px; color: #666;'>${(file_size / 1024).toFixed(2)} KB</p>
@@ -12043,7 +12069,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             audioPlayer.play().then(() => {
                 isPlaying = true;
                 const playBtn = document.getElementById('play-btn');
-                if(playBtn) playBtn.textContent = '⏸';
+                if(playBtn) playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
                 const status = document.getElementById('player-status');
                 if(status) status.textContent = '正在播放';
             }).catch(e => console.error(e));
@@ -12089,7 +12115,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 }
                 // 更新音乐图标为关闭状态
                 if (musicIcon) {
-                    musicIcon.innerHTML = '🎵<span style="color: red; font-size: 12px; position: absolute; top: 5px; right: 5px;">✕</span>';
+                    musicIcon.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg><span style="color: red; font-size: 12px; position: absolute; top: 5px; right: 5px;">✕</span>';
                     musicIcon.style.position = 'relative';
                 }
             }
@@ -12367,13 +12393,13 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             try {
                 await audioPlayer.play();
                 isPlaying = true;
-                document.getElementById('play-btn').textContent = '⏸';
+                document.getElementById('play-btn').innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
                 document.getElementById('player-status').textContent = '正在播放';
                 return true;
             } catch (playError) {
                 console.error('自动播放失败:', playError);
                 isPlaying = false;
-                document.getElementById('play-btn').textContent = '▶';
+                document.getElementById('play-btn').innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
                 document.getElementById('player-status').textContent = '已暂停（点击播放）';
                 return true;
             }
@@ -12575,12 +12601,12 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                     try {
                         await audioPlayer.play();
                         isPlaying = true;
-                        document.getElementById('play-btn').textContent = '⏸';
+                        document.getElementById('play-btn').innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
                         document.getElementById('player-status').textContent = '正在播放';
                     } catch (playError) {
                         console.error('自动播放失败:', playError);
                         isPlaying = false;
-                        document.getElementById('play-btn').textContent = '▶';
+                        document.getElementById('play-btn').innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
                         document.getElementById('player-status').textContent = '已暂停（点击播放）';
                     }
                 } else {
@@ -12629,7 +12655,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             if (isPlaying) {
                 try {
                     audioPlayer.pause();
-                    playBtn.textContent = '▶';
+                    playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
                     document.getElementById('player-status').textContent = '已暂停';
                     isPlaying = false;
                 } catch (error) {
@@ -12645,7 +12671,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                     }
                     
                     await audioPlayer.play();
-                    playBtn.textContent = '⏸';
+                    playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
                     document.getElementById('player-status').textContent = '正在播放';
                     isPlaying = true;
                 } catch (error) {
@@ -12682,7 +12708,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                             
                             // 再次尝试播放
                             await audioPlayer.play();
-                            playBtn.textContent = '⏸';
+                            playBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
                             document.getElementById('player-status').textContent = '正在播放';
                             isPlaying = true;
                             console.log(`[音乐播放器] 重新获取音乐链接成功，正在播放`);
@@ -12883,7 +12909,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 audioPlayer.pause();
                 // 更新音乐图标为关闭状态（带红色撇号）
                 if (musicIcon) {
-                    musicIcon.innerHTML = '🎵<span style="color: red; font-size: 12px; position: absolute; top: 5px; right: 5px;">✕</span>';
+                    musicIcon.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg><span style="color: red; font-size: 12px; position: absolute; top: 5px; right: 5px;">✕</span>';
                     musicIcon.style.position = 'relative';
                 }
             } else {
@@ -12892,7 +12918,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 player.style.zIndex = '9999'; // 确保播放器显示在最顶层
                 // 更新音乐图标为正常状态
                 if (musicIcon) {
-                    musicIcon.innerHTML = '🎵';
+                    musicIcon.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
                 }
             }
             console.log('播放器新显示状态:', player.style.display);
@@ -13116,7 +13142,7 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
         <div class="system-modal">
             <h2 class="system-modal-title" id="modalTitle">系统提示</h2>
             <div class="system-modal-content">
-                <div class="exclamation-icon" id="modalIcon">⚠️</div>
+                <div class="exclamation-icon" id="modalIcon"><svg viewBox="0 0 24 24" width="48" height="48" fill="#ff9800"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg></div>
                 <div id="modalMessage"></div>
                 <div id="modalCountdown" class="countdown-text" style="display: none;"></div>
             </div>
@@ -13161,13 +13187,13 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             
             // 设置图标
             if (type === 'warning') {
-                modalIcon.textContent = '⚠️';
+                modalIcon.innerHTML = '<svg viewBox="0 0 24 24" width="48" height="48" fill="#ff9800"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>';
             } else if (type === 'error') {
-                modalIcon.textContent = '❌';
+                modalIcon.innerHTML = '<svg viewBox="0 0 24 24" width="48" height="48" fill="#f44336"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>';
             } else if (type === 'success') {
-                modalIcon.textContent = '✅';
+                modalIcon.innerHTML = '<svg viewBox="0 0 24 24" width="48" height="48" fill="#4caf50"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
             } else {
-                modalIcon.textContent = 'ℹ️';
+                modalIcon.innerHTML = '<svg viewBox="0 0 24 24" width="48" height="48" fill="#2196f3"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>';
             }
             
             // 设置消息
@@ -13757,7 +13783,8 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             // 初始化极验
             if (!bindGeetestCaptcha && typeof initGeetest4 === 'function') {
                 initGeetest4({
-                    captchaId: '55574dfff9c40f2efeb5a26d6d188245'
+                    captchaId: '55574dfff9c40f2efeb5a26d6d188245',
+                    https: true
                 }, function (captcha) {
                     bindGeetestCaptcha = captcha;
                     captcha.appendTo("#bind-phone-captcha");

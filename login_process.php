@@ -404,16 +404,35 @@ if (isset($_GET['scan_login']) && isset($_GET['token'])) {
             // 检查时间是否在早上11点到晚上11点之间，如果是则自动加入点歌群聊
             $current_hour = date('H');
             if ($current_hour >= 10 && $current_hour < 23) {
-                // 获取点歌群聊
-                $stmt = $conn->prepare("SELECT id FROM `groups` WHERE Music_all_group = 1");
-                $stmt->execute();
-                $music_group = $stmt->fetch();
-                
-                if ($music_group) {
-                    $music_group_id = $music_group['id'];
-                    $current_user_id = $user_info['id'];
+                try {
+                    // 检查groups表是否存在Music_all_group字段，如果不存在则创建
+                    $stmt = $conn->prepare("SHOW COLUMNS FROM `groups` LIKE 'Music_all_group'");
+                    $stmt->execute();
+                    $column_exists = $stmt->fetch();
+                    
+                    if (!$column_exists) {
+                        // 添加Music_all_group字段
+                        $conn->exec("ALTER TABLE `groups` ADD COLUMN Music_all_group INT DEFAULT 0 AFTER is_muted");
+                        error_log("Added Music_all_group column to groups table");
+                    }
+                    
+                    // 检查是否存在点歌群聊，如果不存在则创建
+                    $stmt = $conn->prepare("SELECT id FROM `groups` WHERE Music_all_group = 1");
+                    $stmt->execute();
+                    $music_group = $stmt->fetch();
+                    
+                    if (!$music_group) {
+                        // 创建点歌群聊
+                        $stmt = $conn->prepare("INSERT INTO `groups` (name, creator_id, owner_id, Music_all_group) VALUES ('点歌群聊', 1, 1, 1)");
+                        $stmt->execute();
+                        $music_group_id = $conn->lastInsertId();
+                        error_log("Created music group with ID: $music_group_id");
+                    } else {
+                        $music_group_id = $music_group['id'];
+                    }
                     
                     // 检查用户是否已经在点歌群聊中
+                    $current_user_id = $user_info['id'];
                     $stmt = $conn->prepare("SELECT id FROM group_members WHERE group_id = ? AND user_id = ?");
                     $stmt->execute([$music_group_id, $current_user_id]);
                     $is_in_group = $stmt->fetch();
@@ -428,6 +447,9 @@ if (isset($_GET['scan_login']) && isset($_GET['token'])) {
                             error_log("Failed to add user to music group: " . $e->getMessage());
                         }
                     }
+                } catch (PDOException $e) {
+                    // 忽略错误，继续登录流程
+                    error_log("Music group check error: " . $e->getMessage());
                 }
             }
             
@@ -636,16 +658,35 @@ $ch = curl_init();
             // 检查时间是否在早上11点到晚上11点之间，如果是则自动加入点歌群聊
             $current_hour = date('H');
             if ($current_hour >= 11 && $current_hour < 23) {
-                // 获取点歌群聊
-                $stmt = $conn->prepare("SELECT id FROM `groups` WHERE Music_all_group = 1");
-                $stmt->execute();
-                $music_group = $stmt->fetch();
-                
-                if ($music_group) {
-                    $music_group_id = $music_group['id'];
-                    $current_user_id = $result['user']['id'];
+                try {
+                    // 检查groups表是否存在Music_all_group字段，如果不存在则创建
+                    $stmt = $conn->prepare("SHOW COLUMNS FROM `groups` LIKE 'Music_all_group'");
+                    $stmt->execute();
+                    $column_exists = $stmt->fetch();
+                    
+                    if (!$column_exists) {
+                        // 添加Music_all_group字段
+                        $conn->exec("ALTER TABLE `groups` ADD COLUMN Music_all_group INT DEFAULT 0 AFTER is_muted");
+                        error_log("Added Music_all_group column to groups table");
+                    }
+                    
+                    // 检查是否存在点歌群聊，如果不存在则创建
+                    $stmt = $conn->prepare("SELECT id FROM `groups` WHERE Music_all_group = 1");
+                    $stmt->execute();
+                    $music_group = $stmt->fetch();
+                    
+                    if (!$music_group) {
+                        // 创建点歌群聊
+                        $stmt = $conn->prepare("INSERT INTO `groups` (name, creator_id, owner_id, Music_all_group) VALUES ('点歌群聊', 1, 1, 1)");
+                        $stmt->execute();
+                        $music_group_id = $conn->lastInsertId();
+                        error_log("Created music group with ID: $music_group_id");
+                    } else {
+                        $music_group_id = $music_group['id'];
+                    }
                     
                     // 检查用户是否已经在点歌群聊中
+                    $current_user_id = $result['user']['id'];
                     $stmt = $conn->prepare("SELECT id FROM group_members WHERE group_id = ? AND user_id = ?");
                     $stmt->execute([$music_group_id, $current_user_id]);
                     $is_in_group = $stmt->fetch();
@@ -660,6 +701,9 @@ $ch = curl_init();
                             error_log("Failed to add user to music group: " . $e->getMessage());
                         }
                     }
+                } catch (PDOException $e) {
+                    // 忽略错误，继续登录流程
+                    error_log("Music group check error: " . $e->getMessage());
                 }
             }
             
