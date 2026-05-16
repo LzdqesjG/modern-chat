@@ -4324,30 +4324,8 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                         
                         const deviceType = detectDeviceType();
                         
-                        // 扫描后立即更新状态为scanned
-                        fetch('scan_login.php', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/x-www-form-urlencoded',
-                            },
-                            body: new URLSearchParams({
-                                'qid': qid,
-                                'action': 'scan',
-                                'source': 'mobilechat.php',
-                                'app': deviceType
-                            })
-                        }).then(response => response.json())
-                          .then(data => {
-                              if (!data.success) {
-                                  console.error('更新扫描状态失败:', data.message);
-                              }
-                          })
-                          .catch(error => {
-                              console.error('更新扫描状态失败:', error);
-                              // 即使更新状态失败，也继续显示确认登录对话框
-                              // 因为用户已经扫描了二维码，可能只是网络问题
-                              console.log('更新扫描状态失败，但继续显示确认登录对话框');
-                          });
+                        // 扫描后立即更新状态为scanned（使用vkey）
+                        updateScanStatus(qid, 'scan', deviceType);
                         
                         // 显示确认登录对话框
                         console.log('显示确认登录对话框');
@@ -4426,6 +4404,67 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             }, 1000);
         }
         
+        // 更新扫码状态（统一使用vkey认证）
+        async function updateScanStatus(qid, action, deviceType) {
+            try {
+                // 先获取当前用户的 vkey
+                const vkeyResponse = await fetch('vkey_manager.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        'action': 'get'
+                    })
+                });
+                
+                const vkeyResult = await vkeyResponse.json();
+                if (!vkeyResult.success || !vkeyResult.vkey) {
+                    console.error('获取vkey失败:', vkeyResult.message || '未知错误');
+                    // 即使获取vkey失败，也继续显示确认登录对话框（用户已经扫描了二维码）
+                    if (action === 'scan') {
+                        console.log('获取vkey失败，但继续显示确认登录对话框');
+                    }
+                    return;
+                }
+                
+                const vkey = vkeyResult.vkey;
+                
+                // 发送状态更新请求
+                const response = await fetch('scan_login.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        'qid': qid,
+                        'action': action,
+                        'vkey': vkey,
+                        'source': 'mobilechat.php',
+                        'app': deviceType
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (!data.success) {
+                    console.error('更新扫描状态失败:', data.message);
+                    // 即使更新状态失败，也继续显示确认登录对话框（用户已经扫描了二维码）
+                    if (action === 'scan') {
+                        console.log('更新扫描状态失败，但继续显示确认登录对话框');
+                    }
+                } else {
+                    console.log('更新扫描状态成功:', action);
+                }
+            } catch (error) {
+                console.error('更新扫描状态失败:', error);
+                // 即使更新状态失败，也继续显示确认登录对话框（用户已经扫描了二维码）
+                if (action === 'scan') {
+                    console.log('更新扫描状态失败，但继续显示确认登录对话框');
+                }
+            }
+        }
+        
         // 确认登录
         function confirmLogin() {
             const modal = document.getElementById('confirm-modal');
@@ -4442,25 +4481,8 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
             
             const deviceType = detectDeviceType();
             
-            // 发送拒绝登录请求，更新状态为rejected
-            fetch('scan_login.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: new URLSearchParams({
-                    'qid': currentQid,
-                    'action': 'reject',
-                    'source': 'mobilechat.php',
-                    'app': deviceType
-                })
-            }).then(response => response.json())
-              .then(result => {
-                  console.log('拒绝登录结果:', result);
-              })
-              .catch(error => {
-                  console.error('发送拒绝登录请求失败:', error);
-              });
+            // 发送拒绝登录请求，更新状态为rejected（使用vkey）
+            updateScanStatus(currentQid, 'reject', deviceType);
         }
         
         // 检测设备类型

@@ -4,7 +4,7 @@ require_once __DIR__ . '/config.php';
 // 安全检查函数
 function checkSafetyStatus() {
     // 检查是否存在安全锁
-    if (file_exists('Safety_locked.lock')) {
+    if (file_exists(__DIR__ . '/Safety_locked.lock')) {
         // 显示安全警告
         echo '<!DOCTYPE html>
         <html lang="zh-CN">
@@ -97,7 +97,7 @@ function checkSafetyStatus() {
                     if ($localSafety !== null && isset($localSafety['version'])) {
                         if ($localSafety['version'] !== $serverVer) {
                             // 版本不一致，创建安全锁
-                            file_put_contents('Safety_locked.lock', 'Locked due to version mismatch');
+                            file_put_contents(__DIR__ . '/Safety_locked.lock', 'Locked due to version mismatch');
                             // 重新检查安全状态
                             checkSafetyStatus();
                         }
@@ -105,7 +105,7 @@ function checkSafetyStatus() {
                 }
             } else {
                 // 本地文件不存在，创建安全锁
-                file_put_contents('Safety_locked.lock', 'Locked due to missing Safety_distinction.json');
+                file_put_contents(__DIR__ . '/Safety_locked.lock', 'Locked due to missing Safety_distinction.json');
                 // 重新检查安全状态
                 checkSafetyStatus();
             }
@@ -728,7 +728,8 @@ checkSafetyStatus();
 
         // 初始化极验验证码
         initGeetest4({
-            captchaId: '55574dfff9c40f2efeb5a26d6d188245'
+            captchaId: '55574dfff9c40f2efeb5a26d6d188245',
+            https: true
         }, function (captcha) {
             // captcha为验证码实例
             geetestCaptcha = captcha;

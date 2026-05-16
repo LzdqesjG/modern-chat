@@ -20,7 +20,7 @@ require_once 'db.php';
 // 安全检查函数
 function checkSafetyStatus() {
     // 检查是否存在安全锁
-    if (file_exists('Safety_locked.lock')) {
+    if (file_exists(__DIR__ . '/Safety_locked.lock')) {
         // 显示安全警告
         echo '<!DOCTYPE html>
         <html lang="zh-CN">
@@ -113,7 +113,7 @@ function checkSafetyStatus() {
                     if ($localSafety !== null && isset($localSafety['version'])) {
                         if ($localSafety['version'] !== $serverVer) {
                             // 版本不一致，创建安全锁
-                            file_put_contents('Safety_locked.lock', 'Locked due to version mismatch');
+                            file_put_contents(__DIR__ . '/Safety_locked.lock', 'Locked due to version mismatch');
                             // 重新检查安全状态
                             checkSafetyStatus();
                         }
@@ -121,7 +121,7 @@ function checkSafetyStatus() {
                 }
             } else {
                 // 本地文件不存在，创建安全锁
-                file_put_contents('Safety_locked.lock', 'Locked due to missing Safety_distinction.json');
+                file_put_contents(__DIR__ . '/Safety_locked.lock', 'Locked due to missing Safety_distinction.json');
                 // 重新检查安全状态
                 checkSafetyStatus();
             }
@@ -550,15 +550,26 @@ try {
 
 // 验证管理员密码
 function validateAdminPassword($password, $current_user, $conn) {
+    // 调试日志
+    error_log("validateAdminPassword called with password: '" . $password . "' for user ID: " . $current_user['id']);
+    
     // 获取当前管理员的密码哈希
     $sql = "SELECT password FROM users WHERE id = ?";
     $stmt = $conn->prepare($sql);
     $stmt->execute([$current_user['id']]);
     $user = $stmt->fetch();
     
+    error_log("User found: " . ($user ? "Yes" : "No"));
+    if ($user) {
+        error_log("Password hash in database: '" . $user['password'] . "'");
+        error_log("Password verify result: " . (password_verify($password, $user['password']) ? "True" : "False"));
+    }
+    
     if ($user && password_verify($password, $user['password'])) {
+        error_log("Password validation successful");
         return true;
     }
+    error_log("Password validation failed");
     return false;
 }
 

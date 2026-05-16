@@ -2,6 +2,12 @@
 require_once 'config.php';
 require_once 'db.php';
 
+if ($conn === null) {
+    header('Content-Type: application/json');
+    echo json_encode(['success' => false, 'message' => '数据库连接失败']);
+    exit;
+}
+
 // 确保scan_login表结构正确
 try {
     // 检查scan_login表是否有browser_fingerprint字段
@@ -102,9 +108,20 @@ function validateDevice($app_type) {
     }
 }
 
+function getUserIdByVkey($conn, $vkey) {
+    try {
+        $stmt = $conn->prepare("SELECT id FROM users WHERE vkey = ? AND is_deleted = FALSE");
+        $stmt->execute([$vkey]);
+        $result = $stmt->fetch();
+        return $result ? $result['id'] : null;
+    } catch (PDOException $e) {
+        error_log("Get user by vkey error: " . $e->getMessage());
+        return null;
+    }
+}
+
 // 主处理逻辑
 if (isset($_GET['check_status'])) {
-    // 检查登录状态
     $qid = isset($_GET['qid']) ? $_GET['qid'] : '';
     
     if (empty($qid)) {
@@ -113,7 +130,6 @@ if (isset($_GET['check_status'])) {
     }
     
     try {
-        // 优化：添加qid索引（如果不存在）
         $stmt = $conn->prepare("SHOW INDEX FROM scan_login WHERE Key_name = 'idx_qid'");
         $stmt->execute();
         $index_exists = $stmt->fetch();
@@ -123,7 +139,6 @@ if (isset($_GET['check_status'])) {
             error_log("Created index idx_qid on scan_login table");
         }
         
-        // 优化：使用索引查询，提高速度
         $sql = "SELECT * FROM scan_login WHERE qid = ?";
         $stmt = $conn->prepare($sql);
         $stmt->execute([$qid]);
@@ -163,7 +178,7 @@ if (isset($_GET['check_status'])) {
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $qid = isset($_POST['qid']) ? $_POST['qid'] : '';
     $action = isset($_POST['action']) ? $_POST['action'] : '';
-    $user = isset($_POST['user']) ? $_POST['user'] : '';
+    $vkey = isset($_POST['vkey']) ? $_POST['vkey'] : '';
     $source = isset($_POST['source']) ? $_POST['source'] : '';
     $app = isset($_POST['app']) ? $_POST['app'] : '';
     
@@ -177,7 +192,6 @@ if (isset($_GET['check_status'])) {
         exit;
     }
     
-    // 验证设备类型
     if (!empty($app)) {
         if (!validateDevice($app)) {
             echo json_encode(['success' => false, 'message' => '设备类型验证失败: ' . $app]);
@@ -186,7 +200,6 @@ if (isset($_GET['check_status'])) {
     }
     
     try {
-        // 检查二维码是否存在且未过期
         $sql = "SELECT * FROM scan_login WHERE qid = ? AND expire_at > NOW()";
         $stmt = $conn->prepare($sql);
         $stmt->execute([$qid]);
@@ -197,47 +210,36 @@ if (isset($_GET['check_status'])) {
             exit;
         }
         
-        // 处理扫描动作（更新状态为scanned）
         if ($action === 'scan') {
             $sql = "UPDATE scan_login SET status = 'scanned' WHERE qid = ?";
             $stmt = $conn->prepare($sql);
             $stmt->execute([$qid]);
             echo json_encode(['success' => true, 'message' => '扫描状态更新成功']);
         }
-        // 处理拒绝登录动作（更新状态为rejected）
         elseif ($action === 'reject') {
             $sql = "UPDATE scan_login SET status = 'rejected' WHERE qid = ?";
             $stmt = $conn->prepare($sql);
             $stmt->execute([$qid]);
             echo json_encode(['success' => true, 'message' => '已拒绝登录请求']);
         }
-        // 处理登录动作（更新状态为success）
         else {
-            if (empty($user)) {
-                echo json_encode(['success' => false, 'message' => '参数错误: 缺少用户名']);
+            if (empty($vkey)) {
+                echo json_encode(['success' => false, 'message' => '密钥错误，请重新尝试！']);
                 exit;
             }
             
-            $username = $user;
+            $user_id = getUserIdByVkey($conn, $vkey);
             
-            // 获取用户ID
-            $sql = "SELECT id FROM users WHERE username = ?";
-            $stmt = $conn->prepare($sql);
-            $stmt->execute([$username]);
-            $user_data = $stmt->fetch();
-            
-            if (!$user_data) {
-                echo json_encode(['success' => false, 'message' => '用户不存在: ' . $username]);
+            if (!$user_id) {
+                echo json_encode(['success' => false, 'message' => '密钥错误，请重新尝试！']);
                 exit;
             }
-            
-            $user_id = $user_data['id'];
             
             $sql = "UPDATE scan_login SET status = 'success', user_id = ?, login_source = ? WHERE qid = ?";
             $stmt = $conn->prepare($sql);
             $stmt->execute([$user_id, $source, $qid]);
             
-            echo json_encode(['success' => true, 'message' => '登录成功', 'debug' => 'qid: ' . $qid . ', user: ' . $user . ', user_id: ' . $user_id]);
+            echo json_encode(['success' => true, 'message' => '登录成功']);
         }
     } catch(PDOException $e) {
         echo json_encode(['success' => false, 'message' => '操作失败: ' . $e->getMessage()]);

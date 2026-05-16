@@ -68,6 +68,22 @@ VideoProtection.playWithMSE = async function(videoElement, videoUrl) {
         return false;
     }
     
+    // 对于远程视频，使用安全的Token URL
+    if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://') || videoUrl.startsWith('/')) {
+        try {
+            // 获取带有Token的安全URL
+            const response = await fetch(`get-secure-video.php?action=get_token&file_path=${encodeURIComponent(videoUrl)}`);
+            const data = await response.json();
+            
+            if (data.url) {
+                videoUrl = data.url;
+                console.log('使用安全Token URL:', videoUrl);
+            }
+        } catch (error) {
+            console.error('获取安全Token失败:', error);
+        }
+    }
+    
     if (!window.MediaSource) {
         console.warn('MediaSource not supported, falling back to direct playback');
         return false;
@@ -220,8 +236,8 @@ VideoProtection.playWithMSE = async function(videoElement, videoUrl) {
                         }
                     }
                     
-                    // 分段获取视频数据，增强安全性
-                    await VideoProtection.fetchVideoSegments(videoUrl, sourceBuffer, mediaSource, sessionId);
+                    // 分段获取视频数据，直接加载，不需要提前加载
+                    await VideoProtection.fetchVideoSegments(videoUrl, sourceBuffer, mediaSource, sessionId, videoElement);
                     
                     resolve(true);
                 } catch (error) {
@@ -257,17 +273,10 @@ VideoProtection.playWithMSE = async function(videoElement, videoUrl) {
 };
 
 // 为VideoProtection添加fetchVideoSegments方法
-VideoProtection.fetchVideoSegments = async function(videoUrl, sourceBuffer, mediaSource, sessionId) {
+VideoProtection.fetchVideoSegments = async function(videoUrl, sourceBuffer, mediaSource, sessionId, videoElement) {
     try {
-        // 检查videoUrl是否是假的blob URL
+        // 直接使用视频URL，不再检查假的blob URL
         let finalUrl = videoUrl;
-        if (typeof finalUrl === 'string' && finalUrl.startsWith(`blob:https://${window.location.hostname}/fake-`)) {
-            // 替换为真实URL
-            const realUrl = ModernChatVideoPlayer.fakeBlobMap.get(finalUrl);
-            if (realUrl) {
-                finalUrl = realUrl;
-            }
-        }
         
         // 检查finalUrl是否是本地缓存的真实blob URL
         if (finalUrl.startsWith('blob:') && !finalUrl.startsWith(`blob:https://${window.location.hostname}/fake-`)) {
@@ -329,12 +338,35 @@ VideoProtection.fetchVideoSegments = async function(videoUrl, sourceBuffer, medi
                 throw new Error('Cannot determine video size');
             }
             
-            // 分段获取视频数据
-            const chunkSize = 4 * 1024 * 1024; // 4MB chunks for better 4K video performance
-            const totalChunks = Math.ceil(contentLength / chunkSize);
+            // 创建已加载进度指示器
+            if (videoElement) {
+                VideoProtection.createLoadedProgressIndicator(videoElement);
+            }
             
-            for (let i = 0; i < totalChunks; i++) {
-                const start = i * chunkSize;
+            // 分段获取视频数据（直接加载，不需要提前加载）
+            const chunkSize = 1 * 1024 * 1024; // 1MB chunks
+            let position = 0;
+            
+            console.log(`开始直接加载视频，总大小: ${contentLength} bytes`);
+            
+            // 直接加载视频数据
+            while (position < contentLength) {
+                // 检查页面是否在后台
+                if (document.hidden) {
+                    console.log('页面在后台，暂停视频加载');
+                    // 等待页面回到前台
+                    await new Promise(resolve => {
+                        const visibilityChangeHandler = () => {
+                            if (!document.hidden) {
+                                document.removeEventListener('visibilitychange', visibilityChangeHandler);
+                                resolve();
+                            }
+                        };
+                        document.addEventListener('visibilitychange', visibilityChangeHandler);
+                    });
+                }
+                
+                const start = position;
                 const end = Math.min(start + chunkSize - 1, contentLength - 1);
                 
                 // 检查mediaSource是否仍然打开
@@ -361,14 +393,14 @@ VideoProtection.fetchVideoSegments = async function(videoUrl, sourceBuffer, medi
                 });
                 
                 if (!response.ok) {
-                    throw new Error(`Failed to fetch video segment ${i + 1}/${totalChunks}`);
+                    throw new Error(`Failed to fetch video segment`);
                 }
                 
                 const chunkBuffer = await response.arrayBuffer();
                 
                 // 检查chunkBuffer是否有效
                 if (chunkBuffer.byteLength === 0) {
-                    throw new Error(`Empty video segment ${i + 1}/${totalChunks}`);
+                    throw new Error(`Empty video segment`);
                 }
                 
                 // 添加数据到sourceBuffer
@@ -381,7 +413,20 @@ VideoProtection.fetchVideoSegments = async function(videoUrl, sourceBuffer, medi
                         sourceBuffer.addEventListener('error', reject, { once: true });
                     });
                 }
+                
+                // 更新位置
+                position = end + 1;
+                const loadedSize = position;
+                
+                // 更新已加载进度
+                if (videoElement) {
+                    VideoProtection.updateLoadedProgress(videoElement, loadedSize, contentLength);
+                }
+                
+                console.log(`加载进度: ${Math.round((loadedSize / contentLength) * 100)}%`);
             }
+            
+            console.log('视频加载完成');
             
             // 所有数据添加完成
             if (mediaSource.readyState === 'open') {
@@ -397,6 +442,83 @@ VideoProtection.fetchVideoSegments = async function(videoUrl, sourceBuffer, medi
     }
 };
 
+// 为VideoProtection添加页面可见性变化处理
+VideoProtection.setupVisibilityHandler = function(videoElement) {
+    if (!videoElement) return;
+    
+    // 监听页面可见性变化
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            console.log('页面进入后台，暂停视频加载和渲染');
+            // 页面进入后台时，暂停视频加载
+            // 注意：音频会继续播放
+        } else {
+            console.log('页面回到前台，恢复视频加载和渲染');
+            // 页面回到前台时，恢复视频加载
+        }
+    });
+};
+
+// 为VideoProtection添加createLoadedProgressIndicator方法
+VideoProtection.createLoadedProgressIndicator = function(videoElement) {
+    // 检查是否已经存在进度指示器
+    if (videoElement._loadedProgressIndicator) {
+        return;
+    }
+    
+    // 创建进度指示器容器
+    const container = document.createElement('div');
+    container.className = 'modern-chat-video-loaded-progress';
+    container.style.position = 'absolute';
+    container.style.bottom = '0';
+    container.style.left = '0';
+    container.style.width = '100%';
+    container.style.height = '4px';
+    container.style.background = 'rgba(255, 255, 255, 0.2)';
+    container.style.zIndex = '999';
+    container.style.pointerEvents = 'none';
+    
+    // 创建已加载进度条
+    const progressBar = document.createElement('div');
+    progressBar.className = 'modern-chat-video-loaded-progress-bar';
+    progressBar.style.width = '0%';
+    progressBar.style.height = '100%';
+    progressBar.style.background = '#1976d2';
+    progressBar.style.transition = 'width 0.3s ease';
+    
+    container.appendChild(progressBar);
+    
+    // 确保视频元素有定位
+    if (videoElement.style.position === '' || videoElement.style.position === 'static') {
+        videoElement.style.position = 'relative';
+    }
+    
+    // 确保视频元素的容器也有定位
+    const videoContainer = videoElement.parentElement;
+    if (videoContainer && (videoContainer.style.position === '' || videoContainer.style.position === 'static')) {
+        videoContainer.style.position = 'relative';
+    }
+    
+    // 将进度指示器添加到视频容器中
+    videoContainer.appendChild(container);
+    
+    // 存储进度指示器引用
+    videoElement._loadedProgressIndicator = container;
+};
+
+// 为VideoProtection添加updateLoadedProgress方法
+VideoProtection.updateLoadedProgress = function(videoElement, loadedSize, totalSize) {
+    if (!videoElement._loadedProgressIndicator) {
+        VideoProtection.createLoadedProgressIndicator(videoElement);
+    }
+    
+    const progressBar = videoElement._loadedProgressIndicator.querySelector('.modern-chat-video-loaded-progress-bar');
+    if (progressBar) {
+        const percent = (loadedSize / totalSize) * 100;
+        progressBar.style.width = `${percent}%`;
+    }
+};
+
 // 先定义ModernChatVideoPlayer类，然后再定义VideoProtection类
 class ModernChatVideoPlayer {
     /**
@@ -407,6 +529,22 @@ class ModernChatVideoPlayer {
         if (videoUrl.startsWith('blob:')) {
             console.log('Using traditional playback for local cached video');
             return false;
+        }
+        
+        // 对于远程视频，使用安全的Token URL
+        if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://') || videoUrl.startsWith('/')) {
+            try {
+                // 获取带有Token的安全URL
+                const response = await fetch(`get-secure-video.php?action=get_token&file_path=${encodeURIComponent(videoUrl)}`);
+                const data = await response.json();
+                
+                if (data.url) {
+                    videoUrl = data.url;
+                    console.log('使用安全Token URL:', videoUrl);
+                }
+            } catch (error) {
+                console.error('获取安全Token失败:', error);
+            }
         }
         
         if (!window.MediaSource) {
@@ -576,8 +714,8 @@ class ModernChatVideoPlayer {
                             }
                         }
                         
-                        // 分段获取视频数据，增强安全性
-                        await VideoProtection.fetchVideoSegments(videoUrl, sourceBuffer, mediaSource, sessionId);
+                        // 分段获取视频数据，直接加载，不需要提前加载
+                        await VideoProtection.fetchVideoSegments(videoUrl, sourceBuffer, mediaSource, sessionId, videoElement);
                         
                         resolve(true);
                     } catch (error) {
@@ -891,8 +1029,44 @@ class ModernChatVideoPlayerClass {
         this.applyColorSettings();
         this.updateVolumeDisplay();
         
+        // 设置页面可见性变化处理
+        VideoProtection.setupVisibilityHandler(this.video);
+        
+        // 检查本地数据库中是否有缓存的视频
+        this.checkLocalCache();
+        
         // 在控制台显示初始化信息
         this.showInitMessage();
+    }
+    
+    /**
+     * 检查本地数据库中是否有缓存的视频
+     */
+    async checkLocalCache() {
+        try {
+            // 存储原始视频URL
+            this.originalVideoUrl = this.video.src;
+            
+            // 检查是否存在indexedDBManager
+            if (typeof indexedDBManager !== 'undefined') {
+                try {
+                    // 检查视频是否已被用户缓存
+                    const cachedFile = await getFileFromIndexedDB(this.originalVideoUrl);
+                    if (cachedFile && cachedFile.blob) {
+                        console.log('从本地数据库加载缓存的视频');
+                        const blobUrl = URL.createObjectURL(cachedFile.blob);
+                        this.video.src = blobUrl;
+                        this.video.load();
+                    } else {
+                        console.log('视频未缓存，使用网络加载');
+                    }
+                } catch (error) {
+                    console.warn('从本地数据库加载视频失败:', error);
+                }
+            }
+        } catch (error) {
+            console.error('检查本地缓存失败:', error);
+        }
     }
     
     /**
@@ -1017,6 +1191,12 @@ class ModernChatVideoPlayerClass {
         this.downloadBtn.innerHTML = '⬇';
         this.downloadBtn.title = '下载视频';
         
+        // 缓存按钮
+        this.cacheBtn = document.createElement('button');
+        this.cacheBtn.className = 'modern-chat-video-btn modern-chat-video-cache-btn';
+        this.cacheBtn.innerHTML = '💾';
+        this.cacheBtn.title = '缓存到本地数据库';
+        
         // 画中画按钮
         this.pipBtn = document.createElement('button');
         this.pipBtn.className = 'modern-chat-video-btn modern-chat-video-pip-btn';
@@ -1048,10 +1228,11 @@ class ModernChatVideoPlayerClass {
         centerControls.className = 'modern-chat-video-center-controls';
         centerControls.appendChild(this.timeDisplay);
         
-        // 右侧控制按钮组（下载、画中画和全屏）
+        // 右侧控制按钮组（下载、缓存、画中画和全屏）
         const rightControlsGroup = document.createElement('div');
         rightControlsGroup.className = 'modern-chat-video-right-controls';
         rightControlsGroup.appendChild(this.downloadBtn);
+        rightControlsGroup.appendChild(this.cacheBtn);
         rightControlsGroup.appendChild(this.pipBtn);
         rightControlsGroup.appendChild(this.fullscreenBtn);
         
@@ -1368,6 +1549,11 @@ class ModernChatVideoPlayerClass {
             this.downloadVideo();
         });
         
+        // 缓存按钮事件
+        this.cacheBtn.addEventListener('click', () => {
+            this.cacheVideoToLocal();
+        });
+        
         // 画中画按钮事件
         this.pipBtn.addEventListener('click', () => this.togglePiP());
         
@@ -1636,17 +1822,198 @@ class ModernChatVideoPlayerClass {
     /**
      * 下载视频
      */
-    downloadVideo() {
-        if (this.video.src) {
+    async downloadVideo() {
+        try {
             // 确保视频带有水印
             VideoProtection.addWatermark(this.video);
             
-            const a = document.createElement('a');
-            a.href = this.video.src;
-            a.download = this.getVideoFilename();
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            // 获取原始视频URL
+            let videoUrl = this.originalVideoUrl || this.video.src;
+            
+            // 如果是blob URL，尝试获取原始URL
+            if (videoUrl.startsWith('blob:')) {
+                // 检查是否是假的blob URL
+                if (videoUrl.startsWith(`blob:https://${window.location.hostname}/fake-`)) {
+                    videoUrl = ModernChatVideoPlayer.fakeBlobMap.get(videoUrl) || videoUrl;
+                }
+                // 对于真实的blob URL，尝试从映射中获取原始URL
+                if (ModernChatVideoPlayer.blobUrlMap) {
+                    for (const [blobUrl, originalUrl] of ModernChatVideoPlayer.blobUrlMap.entries()) {
+                        if (blobUrl === videoUrl) {
+                            videoUrl = originalUrl;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // 调用专用PHP脚本创建临时下载链接
+            const response = await fetch(`get-secure-video.php?action=get_download_token&file_path=${encodeURIComponent(videoUrl)}`);
+            const data = await response.json();
+            
+            if (data.url) {
+                const a = document.createElement('a');
+                a.href = data.url;
+                a.download = this.getVideoFilename();
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                console.log('使用临时下载链接:', data.url);
+            } else {
+                console.error('获取下载链接失败:', data.error || '未知错误');
+                // 回退到直接下载
+                const a = document.createElement('a');
+                a.href = this.video.src;
+                a.download = this.getVideoFilename();
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
+        } catch (error) {
+            console.error('下载视频失败:', error);
+            // 回退到直接下载
+            if (this.video.src) {
+                const a = document.createElement('a');
+                a.href = this.video.src;
+                a.download = this.getVideoFilename();
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
+        }
+    }
+    
+    /**
+     * 缓存视频到本地数据库
+     */
+    async cacheVideoToLocal() {
+        try {
+            // 获取原始视频URL
+            let videoUrl = this.originalVideoUrl || this.video.src;
+            
+            // 如果是blob URL，尝试获取原始URL
+            if (videoUrl.startsWith('blob:')) {
+                // 检查是否是假的blob URL
+                if (videoUrl.startsWith(`blob:https://${window.location.hostname}/fake-`)) {
+                    videoUrl = ModernChatVideoPlayer.fakeBlobMap.get(videoUrl) || videoUrl;
+                }
+                // 对于真实的blob URL，尝试从映射中获取原始URL
+                if (ModernChatVideoPlayer.blobUrlMap) {
+                    for (const [blobUrl, originalUrl] of ModernChatVideoPlayer.blobUrlMap.entries()) {
+                        if (blobUrl === videoUrl) {
+                            videoUrl = originalUrl;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // 检查是否存在indexedDBManager
+            if (typeof indexedDBManager !== 'undefined') {
+                // 显示缓存进度
+                const progressBar = this.createCacheProgressBar();
+                
+                // 从服务器获取视频并缓存到IndexedDB
+                const response = await fetch(videoUrl);
+                const blob = await response.blob();
+                
+                // 缓存到IndexedDB
+                const fileData = {
+                    id: videoUrl,
+                    path: videoUrl,
+                    blob: blob,
+                    type: blob.type,
+                    size: blob.size,
+                    timestamp: new Date().toISOString()
+                };
+                
+                await saveFileToIndexedDB(fileData);
+                
+                // 移除进度条
+                this.removeCacheProgressBar(progressBar);
+                
+                console.log('视频缓存成功:', videoUrl);
+                alert('视频缓存成功，下次加载将从本地数据库读取');
+            } else {
+                console.error('IndexedDBManager 未定义，无法缓存视频');
+                alert('浏览器不支持本地缓存功能');
+            }
+        } catch (error) {
+            console.error('缓存视频失败:', error);
+            alert('缓存视频失败: ' + error.message);
+        }
+    }
+    
+    /**
+     * 创建缓存进度条
+     */
+    createCacheProgressBar() {
+        // 创建进度条容器
+        const container = document.createElement('div');
+        container.className = 'modern-chat-cache-progress-container';
+        container.style.position = 'fixed';
+        container.style.bottom = '20px';
+        container.style.left = '50%';
+        container.style.transform = 'translateX(-50%)';
+        container.style.width = '80%';
+        container.style.maxWidth = '600px';
+        container.style.background = 'rgba(0, 0, 0, 0.8)';
+        container.style.borderRadius = '8px';
+        container.style.padding = '15px';
+        container.style.zIndex = '999999999';
+        container.style.color = 'white';
+        container.style.fontSize = '14px';
+        container.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.3)';
+        
+        // 创建标题
+        const title = document.createElement('div');
+        title.className = 'modern-chat-cache-progress-title';
+        title.style.marginBottom = '10px';
+        title.style.display = 'flex';
+        title.style.justifyContent = 'space-between';
+        title.style.alignItems = 'center';
+        title.textContent = '正在缓存视频...';
+        
+        // 创建进度条容器
+        const progressContainer = document.createElement('div');
+        progressContainer.className = 'modern-chat-cache-progress-bar-container';
+        progressContainer.style.width = '100%';
+        progressContainer.style.height = '8px';
+        progressContainer.style.background = 'rgba(255, 255, 255, 0.2)';
+        progressContainer.style.borderRadius = '4px';
+        progressContainer.style.overflow = 'hidden';
+        
+        // 创建进度条
+        const progressBar = document.createElement('div');
+        progressBar.className = 'modern-chat-cache-progress-bar';
+        progressBar.style.width = '0%';
+        progressBar.style.height = '100%';
+        progressBar.style.background = '#1976d2';
+        progressBar.style.borderRadius = '4px';
+        progressBar.style.transition = 'width 0.3s ease';
+        
+        progressContainer.appendChild(progressBar);
+        
+        // 组装进度条
+        container.appendChild(title);
+        container.appendChild(progressContainer);
+        
+        // 添加到页面
+        document.body.appendChild(container);
+        
+        // 返回进度条容器，包含所有必要的元素
+        return {
+            container: container,
+            progressBar: progressBar
+        };
+    }
+    
+    /**
+     * 移除缓存进度条
+     */
+    removeCacheProgressBar(progressBar) {
+        if (progressBar && progressBar.container && progressBar.container.parentNode) {
+            progressBar.container.parentNode.removeChild(progressBar.container);
         }
     }
     
@@ -3815,7 +4182,18 @@ ModernChatVideoPlayer.showPlayModal = function(video) {
         return;
     }
     
-    // 检查本地是否有缓存的视频文件
+    // 检查是否存在openVideoPlayer函数（chat.php中定义）
+    if (typeof openVideoPlayer === 'function') {
+        // 获取视频文件名
+        const videoName = video.getAttribute('data-file-name') || video.src.split('/').pop().split('?')[0];
+        // 获取视频大小（默认为0）
+        const videoSize = parseInt(video.getAttribute('data-file-size') || '0');
+        // 调用chat.php中的openVideoPlayer函数
+        openVideoPlayer(video.src, videoName, videoSize);
+        console.log('使用chat.php中的视频播放器模态框');
+    } else {
+        // 如果openVideoPlayer函数不存在，使用默认的播放弹窗
+        // 检查本地是否有缓存的视频文件
         ModernChatVideoPlayer.checkLocalCache(video.src, function(hasCache, cachedUrl) {
             let videoUrl = video.src;
             
@@ -3838,6 +4216,7 @@ ModernChatVideoPlayer.showPlayModal = function(video) {
                 });
             }
         });
+    }
         
         // 为页面添加视频保护脚本
         (function() {

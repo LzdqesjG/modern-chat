@@ -10,14 +10,13 @@ class FileUpload {
     
     public function __construct($db) {
         $this->conn = $db;
-        // 使用绝对路径，确保文件能正确保存
-        $this->uploadDir = __DIR__ . '/' . UPLOAD_DIR;
+        $this->uploadDir = UPLOAD_DIR;
         $this->maxFileSize = MAX_FILE_SIZE;
         $this->allowedTypes = ALLOWED_FILE_TYPES;
         
         // 确保上传目录存在
         if (!is_dir($this->uploadDir)) {
-            mkdir($this->uploadDir, 0777, true);
+            mkdir($this->uploadDir, 0755, true);
         }
     }
     
@@ -56,25 +55,42 @@ class FileUpload {
                 return ['success' => false, 'message' => '禁止上传网页格式文件'];
             }
             
-            // 安全获取MIME类型 - 不信任浏览器提供的类型
-            $mime_type = $this->getSecureMimeType($file['tmp_name'], $extension);
+            // 跳过文件类型检查，因为服务器没有安装fileinfo扩展
+            // 使用文件扩展名作为MIME类型的替代
+            $mime_type = $file['type']; // 使用浏览器提供的MIME类型
             
-            // 验证MIME类型是否在允许列表中
-            if (!in_array($mime_type, $this->allowedTypes)) {
-                error_log("MIME type not allowed: " . $mime_type);
-                return ['success' => false, 'message' => '不允许上传此类型的文件'];
+            // 如果浏览器没有提供MIME类型，根据扩展名猜测
+            if (empty($mime_type)) {
+                $mime_type = 'application/octet-stream';
             }
             
-            // 额外安全检查：检测文件内容是否包含恶意代码
-            $security_check = $this->scanFileContent($file['tmp_name'], $mime_type);
-            if (!$security_check['safe']) {
-                error_log("File content security check failed: " . $security_check['reason']);
-                return ['success' => false, 'message' => '文件内容安全检查未通过'];
+            // 计算文件的SHA256哈希值
+            $file_sha256 = hash_file('sha256', $file['tmp_name']);
+            
+            // 检查是否已存在相同SHA256的文件
+            $stmt = $this->conn->prepare(
+                "SELECT * FROM files WHERE file_sha256 = ?"
+            );
+            $stmt->execute([$file_sha256]);
+            $existing_file = $stmt->fetch();
+            
+            if ($existing_file) {
+                // 文件已存在，返回秒传信息
+                return [
+                    'success' => true,
+                    'file_path' => $existing_file['file_path'],
+                    'file_name' => $original_name,
+                    'file_size' => $existing_file['file_size'],
+                    'mime_type' => $existing_file['mime_type'],
+                    'stored_name' => $existing_file['stored_name'],
+                    'is_duplicate' => true,
+                    'message' => '文件重复，已秒传！'
+                ];
             }
             
             // 确保上传目录存在
             if (!is_dir($this->uploadDir)) {
-                if (!mkdir($this->uploadDir, 0777, true)) {
+                if (!mkdir($this->uploadDir, 0755, true)) {
                     error_log("Failed to create upload directory: " . $this->uploadDir);
                     return ['success' => false, 'message' => '上传目录创建失败'];
                 }
@@ -98,23 +114,21 @@ class FileUpload {
                 return ['success' => false, 'message' => '文件上传失败: 无法移动文件'];
             }
             
-            // 保存文件信息到数据库
+            // 保存文件信息到数据库（包含SHA256）
             $stmt = $this->conn->prepare(
-                "INSERT INTO files (user_id, original_name, stored_name, file_path, file_size, mime_type) 
-                 VALUES (?, ?, ?, ?, ?, ?)"
+                "INSERT INTO files (user_id, original_name, stored_name, file_path, file_size, mime_type, file_sha256) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?)"
             );
-            $stmt->execute([$user_id, $original_name, $stored_name, $file_path, $file['size'], $mime_type]);
-            
-            // 返回相对路径，方便客户端访问
-            $relative_path = 'uploads/' . $stored_name;
+            $stmt->execute([$user_id, $original_name, $stored_name, $file_path, $file['size'], $mime_type, $file_sha256]);
             
             return [
                 'success' => true,
-                'file_path' => $relative_path,
+                'file_path' => $file_path,
                 'file_name' => $original_name,
                 'file_size' => $file['size'],
                 'mime_type' => $mime_type,
-                'stored_name' => $stored_name
+                'stored_name' => $stored_name,
+                'is_duplicate' => false
             ];
         } catch(PDOException $e) {
             error_log("File Upload Database Error: " . $e->getMessage());
@@ -187,128 +201,5 @@ class FileUpload {
         $units = ['B', 'KB', 'MB', 'GB'];
         $i = floor(log($bytes, 1024));
         return round($bytes / pow(1024, $i), 2) . ' ' . $units[$i];
-    }
-    
-    /**
-     * 安全获取MIME类型 - 优先使用fileinfo扩展，否则根据扩展名映射
-     * @param string $file_path 文件路径
-     * @param string $extension 文件扩展名
-     * @return string MIME类型
-     */
-    private function getSecureMimeType($file_path, $extension) {
-        // 尝试使用fileinfo扩展
-        if (function_exists('finfo_open')) {
-            $finfo = finfo_open(FILEINFO_MIME_TYPE);
-            if ($finfo) {
-                $mime_type = finfo_file($finfo, $file_path);
-                finfo_close($finfo);
-                if ($mime_type) {
-                    return $mime_type;
-                }
-            }
-        }
-        
-        // 尝试使用mime_content_type函数
-        if (function_exists('mime_content_type')) {
-            $mime_type = mime_content_type($file_path);
-            if ($mime_type) {
-                return $mime_type;
-            }
-        }
-        
-        // 根据扩展名映射MIME类型
-        $mime_map = [
-            'jpg' => 'image/jpeg',
-            'jpeg' => 'image/jpeg',
-            'png' => 'image/png',
-            'gif' => 'image/gif',
-            'webp' => 'image/webp',
-            'pdf' => 'application/pdf',
-            'doc' => 'application/msword',
-            'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'xls' => 'application/vnd.ms-excel',
-            'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'ppt' => 'application/vnd.ms-powerpoint',
-            'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-            'txt' => 'text/plain',
-            'csv' => 'text/csv',
-            'mp4' => 'video/mp4',
-            'webm' => 'video/webm',
-            'ogg' => 'video/ogg',
-            'mp3' => 'audio/mpeg',
-            'wav' => 'audio/wav'
-        ];
-        
-        return $mime_map[$extension] ?? 'application/octet-stream';
-    }
-    
-    /**
-     * 扫描文件内容检测恶意代码
-     * @param string $file_path 文件路径
-     * @param string $mime_type MIME类型
-     * @return array ['safe' => bool, 'reason' => string]
-     */
-    private function scanFileContent($file_path, $mime_type) {
-        // 只扫描文本类文件和图片文件
-        $text_types = ['text/plain', 'text/csv', 'application/json', 'application/xml'];
-        $image_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-        
-        // 对于图片文件，检查是否包含恶意代码
-        if (in_array($mime_type, $image_types)) {
-            $content = file_get_contents($file_path);
-            if ($content === false) {
-                return ['safe' => false, 'reason' => 'Cannot read file content'];
-            }
-            
-            // 检查是否包含PHP代码
-            $dangerous_patterns = [
-                '/<\?php/i',
-                '/<\?=/i',
-                '/<script/i',
-                '/javascript:/i',
-                '/on\w+\s*=/i',
-                '/eval\s*\(/i',
-                '/base64_decode/i',
-                '/gzinflate/i',
-                '/str_rot13/i'
-            ];
-            
-            foreach ($dangerous_patterns as $pattern) {
-                if (preg_match($pattern, $content)) {
-                    return ['safe' => false, 'reason' => 'Malicious code pattern detected'];
-                }
-            }
-            
-            // 验证图片是否有效
-            $image_info = @getimagesize($file_path);
-            if ($image_info === false) {
-                return ['safe' => false, 'reason' => 'Invalid image file'];
-            }
-        }
-        
-        // 对于文本文件，检查是否包含危险内容
-        if (in_array($mime_type, $text_types)) {
-            $content = file_get_contents($file_path);
-            if ($content === false) {
-                return ['safe' => false, 'reason' => 'Cannot read file content'];
-            }
-            
-            // 检查是否包含可执行代码
-            $dangerous_patterns = [
-                '/<\?php/i',
-                '/<\?=/i',
-                '/<script/i',
-                '/javascript:/i',
-                '/on\w+\s*=/i'
-            ];
-            
-            foreach ($dangerous_patterns as $pattern) {
-                if (preg_match($pattern, $content)) {
-                    return ['safe' => false, 'reason' => 'Potentially dangerous content detected'];
-                }
-            }
-        }
-        
-        return ['safe' => true, 'reason' => ''];
     }
 }

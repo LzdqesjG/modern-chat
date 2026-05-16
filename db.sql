@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS users (
     has_security_question BOOLEAN DEFAULT FALSE,
     security_question VARCHAR(255) DEFAULT NULL,
     security_answer VARCHAR(255) DEFAULT NULL,
+    vkey VARCHAR(64) DEFAULT NULL UNIQUE,
     last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -470,3 +471,20 @@ CREATE INDEX idx_user_announcement_read_announcement_id ON user_announcement_rea
 
 -- 修改groups表，添加Music_all_group字段
 ALTER TABLE `groups` ADD COLUMN Music_all_group INT DEFAULT 0 AFTER is_muted;
+
+-- 创建PC端访问密钥表
+CREATE TABLE IF NOT EXISTS pc_keys (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    access_key VARCHAR(64) NOT NULL UNIQUE,
+    device_name VARCHAR(100) DEFAULT NULL,
+    ip_address VARCHAR(45) DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_access_key (access_key),
+    INDEX idx_user_id (user_id),
+    INDEX idx_is_active (is_active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
