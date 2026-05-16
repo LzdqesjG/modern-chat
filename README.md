@@ -9,7 +9,6 @@
   <a href="https://github.com/LzdqesjG/modern-chat/releases" target="_blank">
     <img alt="All releases" src="https://img.shields.io/github/downloads/LzdqesjG/modern-chat/total.svg" />
   </a>
-</p>
 
 点击链接加入QQ群聊【网页聊天室用户交流群】：(https://qm.qq.com/q/gn6F4IeCOY)[https://qm.qq.com/q/gn6F4IeCOY]
 
@@ -21,16 +20,15 @@
 
   - https://chat.hyacine.com.cn/chat
   - 如果觉得项目好可以向开发者赞助（自愿）
-  - wx:
-    <p>
-    <img src=" width="256" height="256"/>
-    </p>
-  - zfb:
-    <p>
-    <img src="" width="256" height="256"/>
-    </p>
+---
 ---
 
+   ### 手机端
+   
+  - <a href="https://github.com/Philia093-Cyrene/modern-chat-mobile" target="_blank">modern-chat-mobile（Modern-chat手机端）</a>
+   ### 电脑端
+  - <a href="https://github.com/Philia093-Cyrene/modern-chat-pc" target="_blank">modern-chat-pc（Modern-chat电脑端）</a>
+---
 <p>
   <a href="https://github.com/LzdqesjG/modern-chat/releases/latest" target="_blank">
     <img alt="Latest GitHub release" src="https://img.shields.io/github/release/LzdqesjG/modern-chat.svg" />
