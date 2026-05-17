@@ -568,6 +568,18 @@ try {
                     $sms_required = getConfig('sms_verify_required', false);
                     $ip_address = $_SERVER['REMOTE_ADDR'] ?? '';
                     
+                    // 验证用户名和邮箱不能包含 HTML 标签
+                    if (preg_match('/<[^>]+>/', $username)) {
+                        response_error('用户名不能包含HTML标签');
+                    }
+                    if (preg_match('/<[^>]+>/', $email)) {
+                        response_error('邮箱不能包含HTML标签');
+                    }
+                    
+                    // 过滤 HTML 标签
+                    $username = strip_tags($username);
+                    $email = strip_tags($email);
+                    
                     if (empty($username) || empty($email) || empty($password)) {
                         $hint = [];
                         if (empty($username)) $hint[] = '用户名';
@@ -778,6 +790,21 @@ try {
                     // 允许更新的字段应在 User::updateUser 中控制
                     $update_data = $data;
                     unset($update_data['resource'], $update_data['action'], $update_data['id']); // 移除控制参数
+                    
+                    // 过滤并验证 username 和 email，禁止包含 HTML 标签
+                    if (isset($update_data['username'])) {
+                        if (preg_match('/<[^>]+>/', $update_data['username'])) {
+                            response_error('用户名不能包含HTML标签');
+                        }
+                        $update_data['username'] = strip_tags($update_data['username']);
+                    }
+                    
+                    if (isset($update_data['email'])) {
+                        if (preg_match('/<[^>]+>/', $update_data['email'])) {
+                            response_error('邮箱不能包含HTML标签');
+                        }
+                        $update_data['email'] = strip_tags($update_data['email']);
+                    }
                     
                     // 验证密码
                     if (isset($update_data['password'])) {
