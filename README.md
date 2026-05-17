@@ -1,4 +1,4 @@
-# Modern Chat - 现代化聊天系统-V2.4.00
+# Modern Chat - 现代化聊天系统-V2.5.00
 
 一个基于 PHP + MySQL + HTML 的现代化聊天系统，具有现代化的 UI 设计和丰富的功能。
 
