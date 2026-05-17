@@ -25,10 +25,8 @@ error_reporting(E_ALL);
 
 // 设置响应头
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *'); // 生产环境建议修改为指定域名
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
-header('Access-Control-Allow-Credentials: true');
+
+
 
 // 处理 OPTIONS 预检请求
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -109,7 +107,8 @@ if (empty($resource)) {
             'announcements' => ['get', 'mark_read'],
             'scan_login' => ['confirm', 'status', 'generate', 'scan', 'reject', 'get_ip'],
             'sms' => ['send', 'verify'],
-            'music' => ['list']
+            'music' => ['list'],
+            'vkey' => ['generate', 'get']
         ],
         'usage' => 'POST/GET with resource and action parameters'
     ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
@@ -293,6 +292,7 @@ try {
                     
                     $result = $user->login($email, $password);
                     if ($result['success']) {
+                        session_regenerate_id(true); // 防止会话固定攻击
                         $_SESSION['user_id'] = $result['user']['id'];
                         $_SESSION['username'] = $result['user']['username'];
                         $_SESSION['email'] = $result['user']['email'];
@@ -682,6 +682,89 @@ try {
                     response_success(['unread_count' => $unread_count]);
                     break;
                     
+                case 'poll':
+                    // 轮询获取新消息（支持私聊和群聊）
+                    $last_time = $data['last_time'] ?? null;
+                    $chat_type = $data['chat_type'] ?? 'friend'; // friend 或 group
+                    $chat_id = $data['chat_id'] ?? 0;
+                    
+                    if (empty($last_time)) {
+                        response_error('last_time参数不能为空');
+                    }
+                    
+                    $new_messages = [];
+                    
+                    if ($chat_type === 'friend' && !empty($chat_id)) {
+                        // 获取私聊新消息
+                        $stmt = $conn->prepare("SELECT m.*, u.username as sender_name, u.avatar as sender_avatar 
+                                               FROM messages m 
+                                               JOIN users u ON m.sender_id = u.id 
+                                               WHERE m.receiver_id = ? AND m.sender_id = ? 
+                                               AND m.created_at > ? AND m.is_deleted = 0
+                                               ORDER BY m.created_at ASC");
+                        $stmt->execute([$current_user_id, $chat_id, $last_time]);
+                        $new_messages = $stmt->fetchAll();
+                        
+                        // 也获取自己发送的消息（用于多设备同步）
+                        $stmt = $conn->prepare("SELECT m.*, u.username as sender_name, u.avatar as sender_avatar 
+                                               FROM messages m 
+                                               JOIN users u ON m.sender_id = u.id 
+                                               WHERE m.sender_id = ? AND m.receiver_id = ? 
+                                               AND m.created_at > ? AND m.is_deleted = 0
+                                               ORDER BY m.created_at ASC");
+                        $stmt->execute([$current_user_id, $chat_id, $last_time]);
+                        $sent_messages = $stmt->fetchAll();
+                        
+                        // 合并消息并按时间排序
+                        $new_messages = array_merge($new_messages, $sent_messages);
+                        usort($new_messages, function($a, $b) {
+                            return strtotime($a['created_at']) - strtotime($b['created_at']);
+                        });
+                    } elseif ($chat_type === 'group' && !empty($chat_id)) {
+                        // 获取群聊新消息
+                        $stmt = $conn->prepare("SELECT gm.*, u.username as sender_name, u.avatar as sender_avatar 
+                                               FROM group_messages gm 
+                                               JOIN users u ON gm.sender_id = u.id 
+                                               WHERE gm.group_id = ? 
+                                               AND gm.created_at > ? AND gm.is_deleted = 0
+                                               ORDER BY gm.created_at ASC");
+                        $stmt->execute([$chat_id, $last_time]);
+                        $new_messages = $stmt->fetchAll();
+                    }
+                    
+                    // 处理消息数据，确保字段名与前端一致
+                    $processed_messages = [];
+                    foreach ($new_messages as $msg) {
+                        $processed_msg = $msg;
+                        // 确保sender_name字段存在
+                        $processed_msg['sender_name'] = $msg['sender_name'] ?? '未知';
+                        // 确保time字段存在
+                        $processed_msg['time'] = $msg['created_at'] ?? '';
+                        // 确保created_at字段存在
+                        $processed_msg['created_at'] = $msg['created_at'] ?? '';
+                        // 确保avatar字段存在
+                        $processed_msg['avatar'] = $msg['sender_avatar'] ?? null;
+                        // 处理消息类型
+                        if (!empty($msg['message_type']) && $msg['message_type'] === 'file') {
+                            $processed_msg['file_info'] = json_decode($msg['file_info'] ?? '{}', true);
+                        }
+                        // 移除敏感字段
+                        if (isset($processed_msg['receiver_id'])) {
+                            unset($processed_msg['receiver_id']);
+                        }
+                        if (isset($processed_msg['sender_avatar'])) {
+                            unset($processed_msg['sender_avatar']);
+                        }
+                        $processed_messages[] = $processed_msg;
+                    }
+                    $new_messages = $processed_messages;
+                    
+                    response_success([
+                        'messages' => $new_messages,
+                        'count' => count($new_messages)
+                    ]);
+                    break;
+                    
                 default:
                     response_error("Messages 模块不支持操作: $action");
             }
@@ -1032,21 +1115,55 @@ try {
                     response_error('缺少 path 参数', 400);
                 }
                 $path = str_replace('\\', '/', $path);
-                if (strpos($path, '..') !== false || !preg_match('#^uploads/#', $path)) {
+                if (strpos($path, '..') !== false) {
                     response_error('无效的路径', 400);
                 }
-                $full_path = $base_dir . '/' . $path;
+                
+                // 支持多种路径格式
+                $full_path = '';
+                
+                // 检查路径是否已包含 uploads/
+                if (preg_match('#^uploads/#', $path)) {
+                    $full_path = $base_dir . '/' . $path;
+                } else {
+                    // 尝试在 uploads/ 目录下查找
+                    $full_path = $base_dir . '/uploads/' . $path;
+                }
+                
+                // 如果文件不存在，尝试其他可能的路径
+                if (!file_exists($full_path) || !is_file($full_path)) {
+                    // 尝试检查 avatars/ 目录（旧版本可能存储在那里）
+                    $alternative_path = $base_dir . '/avatars/' . basename($path);
+                    if (file_exists($alternative_path) && is_file($alternative_path)) {
+                        $full_path = $alternative_path;
+                    } else {
+                        // 尝试检查 uploads/avatars/ 目录
+                        $avatars_path = $base_dir . '/uploads/avatars/' . basename($path);
+                        if (file_exists($avatars_path) && is_file($avatars_path)) {
+                            $full_path = $avatars_path;
+                        } else {
+                            // 尝试检查原始文件名（不带 uploads/ 前缀的情况）
+                            $original_path = $base_dir . '/' . basename($path);
+                            if (file_exists($original_path) && is_file($original_path)) {
+                                $full_path = $original_path;
+                            }
+                        }
+                    }
+                }
+                
+                // 如果仍然找不到文件，返回 404
                 if (!file_exists($full_path) || !is_file($full_path)) {
                     http_response_code(404);
                     exit;
                 }
+                
                 $mimes = [
                     'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png',
                     'gif' => 'image/gif', 'webp' => 'image/webp', 'svg' => 'image/svg+xml',
                     'mp4' => 'video/mp4', 'webm' => 'video/webm', 'ogg' => 'video/ogg',
                     'mp3' => 'audio/mpeg', 'wav' => 'audio/wav', 'pdf' => 'application/pdf'
                 ];
-                $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+                $ext = strtolower(pathinfo($full_path, PATHINFO_EXTENSION));
                 $ctype = $mimes[$ext] ?? 'application/octet-stream';
                 header('Content-Type: ' . $ctype);
                 header('Cache-Control: public, max-age=86400');
@@ -1068,7 +1185,11 @@ try {
             
             $upload_result = $fileUpload->upload($_FILES['file'], $current_user_id);
             if ($upload_result['success']) {
-                response_success($upload_result, '文件上传成功');
+                if (!empty($upload_result['is_duplicate'])) {
+                    response_success($upload_result, '文件重复，已秒传！');
+                } else {
+                    response_success($upload_result, '文件上传成功');
+                }
             } else {
                 response_error($upload_result['message']);
             }
@@ -1079,57 +1200,80 @@ try {
         // ------------------------------------------
         case 'avatar':
             $current_user_id = check_auth();
-            
+
             if (!isset($_FILES['avatar'])) {
                 response_error('请选择头像文件');
             }
-            
+
             $file = $_FILES['avatar'];
-            
+
+            // 定义允许的图片扩展名白名单
+            $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+
+            // 获取并清理文件扩展名（转小写）
+            $file_ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+
+            // 验证文件扩展名是否在白名单中
+            if (!in_array($file_ext, $allowed_extensions)) {
+                response_error('只允许上传图片文件（jpg, jpeg, png, gif, webp）');
+            }
+
             // 验证文件类型
             $allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-            
+
             // 检查 fileinfo 扩展是否可用
             if (!function_exists('finfo_open')) {
                 response_error('服务器缺少 fileinfo 扩展，无法验证文件类型');
             }
-            
+
             $finfo = finfo_open(FILEINFO_MIME_TYPE);
             if (!$finfo) {
                 response_error('无法创建文件信息对象');
             }
-            
+
             $mime_type = finfo_file($finfo, $file['tmp_name']);
             finfo_close($finfo);
-            
+
             if (!in_array($mime_type, $allowed_types)) {
                 response_error('只支持 JPG、PNG、GIF、WEBP 格式的图片');
             }
-            
+
+            // 额外的文件头验证（防止MIME类型伪造）
+            $file_info = getimagesize($file['tmp_name']);
+            if (!$file_info || !in_array($file_info['mime'], $allowed_types)) {
+                response_error('文件类型验证失败');
+            }
+
             // 验证文件大小 (最大 2MB)
             if ($file['size'] > 2 * 1024 * 1024) {
                 response_error('头像大小不能超过 2MB');
             }
-            
-            // 生成文件名
-            $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
-            $avatar_name = 'avatar_' . $current_user_id . '_' . time() . '.' . $extension;
+
+            // 生成文件名 - 使用强制安全的扩展名（从MIME类型映射）
+            $ext_map = [
+                'image/jpeg' => 'jpg',
+                'image/png' => 'png',
+                'image/gif' => 'gif',
+                'image/webp' => 'webp'
+            ];
+            $safe_ext = $ext_map[$mime_type];
+            $avatar_name = 'avatar_' . $current_user_id . '_' . time() . '.' . $safe_ext;
             $avatar_path = UPLOAD_DIR . $avatar_name;
-            
+
             // 确保上传目录存在
             if (!is_dir(UPLOAD_DIR)) {
-                mkdir(UPLOAD_DIR, 0777, true);
+                mkdir(UPLOAD_DIR, 0755, true);
             }
-            
+
             // 移动文件
             if (!move_uploaded_file($file['tmp_name'], $avatar_path)) {
                 response_error('头像上传失败');
             }
-            
+
             // 更新用户头像
             $stmt = $conn->prepare("UPDATE users SET avatar = ? WHERE id = ?");
             $stmt->execute([$avatar_path, $current_user_id]);
-            
+
             response_success(['avatar' => $avatar_path], '头像上传成功');
             break;
             
@@ -1253,35 +1397,80 @@ try {
             break;
         
         // ------------------------------------------
+        // vkey 密钥管理模块 (VKey)
+        // ------------------------------------------
+        case 'vkey':
+            switch ($action) {
+                case 'generate':
+                    $user_id = (int)($data['user_id'] ?? 0);
+                    if ($user_id <= 0) {
+                        response_error('用户ID无效');
+                    }
+                    
+                    $stmt = $conn->prepare("SELECT vkey FROM users WHERE id = ? AND is_deleted = FALSE");
+                    $stmt->execute([$user_id]);
+                    $existing = $stmt->fetch();
+                    
+                    if ($existing && !empty($existing['vkey'])) {
+                        response_success(['vkey' => $existing['vkey']], '密钥已存在');
+                    }
+                    
+                    $vkey = bin2hex(random_bytes(32));
+                    $stmt = $conn->prepare("UPDATE users SET vkey = ? WHERE id = ?");
+                    $stmt->execute([$vkey, $user_id]);
+                    
+                    response_success(['vkey' => $vkey], '密钥生成成功');
+                    break;
+                    
+                case 'get':
+                    $user_id = (int)($data['user_id'] ?? 0);
+                    if ($user_id <= 0) {
+                        response_error('用户ID无效');
+                    }
+                    
+                    $stmt = $conn->prepare("SELECT vkey FROM users WHERE id = ? AND is_deleted = FALSE");
+                    $stmt->execute([$user_id]);
+                    $result = $stmt->fetch();
+                    
+                    if ($result && !empty($result['vkey'])) {
+                        response_success(['vkey' => $result['vkey']]);
+                    } else {
+                        response_error('未找到密钥');
+                    }
+                    break;
+                    
+                default:
+                    response_error("VKey 模块不支持操作: $action");
+            }
+            break;
+
+        // ------------------------------------------
         // 扫码登录模块 (Scan Login)
         // ------------------------------------------
         case 'scan_login':
             switch ($action) {
                 case 'confirm':
-                    // 确认扫码登录
                     $qid = $data['qid'] ?? '';
-                    $user_id = $data['user_id'] ?? 0;
-                    $username = $data['user'] ?? '';
+                    $vkey = $data['vkey'] ?? '';
                     
                     if (empty($qid)) {
                         response_error('登录标识不能为空');
                     }
                     
-                    // 如果传递的是用户名，先查询用户ID
-                    if (empty($user_id) && !empty($username)) {
-                        $stmt = $conn->prepare("SELECT id FROM users WHERE username = ?");
-                        $stmt->execute([$username]);
-                        $user_data = $stmt->fetch();
-                        if ($user_data) {
-                            $user_id = $user_data['id'];
-                        }
+                    if (empty($vkey)) {
+                        response_error('密钥错误，请重新尝试！');
                     }
                     
-                    if (empty($user_id)) {
-                        response_error('用户信息无效');
+                    $stmt = $conn->prepare("SELECT id FROM users WHERE vkey = ? AND is_deleted = FALSE");
+                    $stmt->execute([$vkey]);
+                    $user_data = $stmt->fetch();
+                    
+                    if (!$user_data) {
+                        response_error('密钥错误，请重新尝试！');
                     }
                     
-                    // 检查qid是否存在且未过期
+                    $user_id = $user_data['id'];
+                    
                     $stmt = $conn->prepare("SELECT * FROM scan_login WHERE qid = ? AND expire_at > NOW() AND status IN ('pending', 'scanned')");
                     $stmt->execute([$qid]);
                     $token_data = $stmt->fetch();
@@ -1290,7 +1479,6 @@ try {
                         response_error('登录二维码无效或已过期');
                     }
                     
-                    // 更新状态为成功
                     $stmt = $conn->prepare("UPDATE scan_login SET status = 'success', user_id = ? WHERE qid = ?");
                     $stmt->execute([$user_id, $qid]);
                     
@@ -1410,7 +1598,7 @@ try {
                     $qid = uniqid('scan_', true) . rand(1000, 9999);
                     $token = bin2hex(random_bytes(32));
                     $expire_at = date('Y-m-d H:i:s', strtotime('+5 minutes'));
-                    $ip_address = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+                    $ip_address = $_SERVER['REMOTE_ADDR'] ?? '未知';
                     
                     $stmt = $conn->prepare("INSERT INTO scan_login (qid, token, expire_at, status, ip_address, created_at) VALUES (?, ?, ?, 'pending', ?, NOW())");
                     $stmt->execute([$qid, $token, $expire_at, $ip_address]);

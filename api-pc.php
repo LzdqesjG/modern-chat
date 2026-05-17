@@ -93,6 +93,17 @@ if ($resource === 'version' && ($action === 'app' || $action === '')) {
     exit;
 }
 
+// 检查服务器连接接口（无需登录）
+if ($resource === 'check_api') {
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'success' => true,
+        'code' => 200,
+        'message' => '服务器连接正常'
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 // 如果没有 resource 参数，返回错误信息
 if (empty($resource)) {
     http_response_code(404);
@@ -308,12 +319,17 @@ function response_success($data = [], $message = '操作成功') {
 /**
  * 返回错误响应
  */
-function response_error($message = '操作失败', $code = 400) {
+function response_error($message = '操作失败', $code = 400, $extraData = []) {
     http_response_code($code);
-    echo json_encode([
+    $response = [
         'success' => false,
-        'message' => $message
-    ], JSON_UNESCAPED_UNICODE);
+        'message' => $message,
+        'code' => $code
+    ];
+    if (!empty($extraData) && is_array($extraData)) {
+        $response = array_merge($response, $extraData);
+    }
+    echo json_encode($response, JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -327,6 +343,38 @@ function check_auth() {
     return $_SESSION['user_id'];
 }
 
+/**
+ * 格式化时长（秒转换为可读格式）
+ * @param int $seconds 秒数
+ * @return string 格式化后的时长
+ */
+function formatDuration($seconds) {
+    if ($seconds <= 0) {
+        return '已过期';
+    }
+    
+    $days = floor($seconds / 86400);
+    $hours = floor(($seconds % 86400) / 3600);
+    $minutes = floor(($seconds % 3600) / 60);
+    $secs = $seconds % 60;
+    
+    $parts = [];
+    if ($days > 0) {
+        $parts[] = $days . '天';
+    }
+    if ($hours > 0) {
+        $parts[] = $hours . '时';
+    }
+    if ($minutes > 0) {
+        $parts[] = $minutes . '分';
+    }
+    if ($secs > 0 || empty($parts)) {
+        $parts[] = $secs . '秒';
+    }
+    
+    return implode('', $parts);
+}
+
 // ==========================================
 // 请求处理逻辑
 // ==========================================
@@ -337,6 +385,102 @@ try {
     
     // 全局参数
     $id = $data['id'] ?? null;
+    
+    // 需要登录的资源列表
+    $requiresAuth = [
+        'user', 'friends', 'messages', 'groups', 'upload', 'avatar', 
+        'sessions', 'unread', 'user_check', 'ip_check'
+    ];
+    
+    // 需要检查用户和IP状态的资源（登录后）
+    $requiresCheck = [
+        'user', 'friends', 'messages', 'groups', 'upload', 'avatar', 
+        'sessions', 'unread'
+    ];
+    
+    // 如果需要登录且不是登录/注册相关请求，检查用户状态
+    if (in_array($resource, $requiresCheck) && isset($_SESSION['user_id'])) {
+        $currentUserId = $_SESSION['user_id'];
+        
+        // 检查用户封禁状态
+        $banInfo = $user->isBanned($currentUserId);
+        if ($banInfo) {
+            $banEnd = strtotime($banInfo['expires_at']);
+            $now = time();
+            $remaining = $banEnd > $now ? $banEnd - $now : 0;
+            
+            $stmt = $conn->prepare("SELECT ban_start FROM bans WHERE user_id = ? AND status = 'active'");
+            $stmt->execute([$currentUserId]);
+            $banStart = $stmt->fetchColumn();
+            
+            $randomCode = mt_rand(8526, 9999);
+            
+            response_error($banInfo['reason'], $randomCode, [
+                'ban_time' => $banStart ?? date('Y-m-d H:i:s'),
+                'ban_end_time' => $banInfo['expires_at'],
+                'Remaining' => formatDuration($remaining)
+            ]);
+        }
+        
+        // 检查IP封禁状态
+        $ipAddress = $_SERVER['REMOTE_ADDR'] ?? '';
+        if (!empty($ipAddress)) {
+            $stmt = $conn->prepare("
+                SELECT COUNT(DISTINCT b.user_id) as banned_count
+                FROM bans b
+                JOIN users u ON b.user_id = u.id
+                JOIN ip_registrations ipr ON u.id = ipr.user_id
+                WHERE b.status = 'active' AND ipr.ip_address = ?
+            ");
+            $stmt->execute([$ipAddress]);
+            $result = $stmt->fetch();
+            $bannedCount = $result['banned_count'] ?? 0;
+            
+            if ($bannedCount >= 5) {
+                $stmt = $conn->prepare("SELECT * FROM ip_bans WHERE ip_address = ? AND status = 'active'");
+                $stmt->execute([$ipAddress]);
+                $ipBan = $stmt->fetch();
+                
+                if ($ipBan) {
+                    $banEnd = strtotime($ipBan['ban_end']);
+                    $now = time();
+                    $remaining = $banEnd > $now ? $banEnd - $now : 0;
+                    
+                    $randomCode = mt_rand(3526, 8526);
+                    
+                    response_error('当前IP下有多个账号已被封禁！', $randomCode, [
+                        'ip_ban_time' => $ipBan['ban_start'],
+                        'ip_ban_end_time' => $ipBan['ban_end'],
+                        'remaining' => formatDuration($remaining)
+                    ]);
+                }
+            }
+            
+            // 优先通过 access_key 验证用户身份
+            $noAccessKeyCheck = ['user_check', 'ip_check', 'version', 'auth'];
+            if (!in_array($resource, $noAccessKeyCheck)) {
+                $accessKey = $data['access_key'] ?? $_GET['access_key'] ?? '';
+                
+                if (!empty($accessKey)) {
+                    $stmt = $conn->prepare("SELECT user_id FROM pc_keys WHERE access_key = ? AND is_active = TRUE");
+                    $stmt->execute([$accessKey]);
+                    $keyInfo = $stmt->fetch();
+                    
+                    if (!$keyInfo) {
+                        echo json_encode([
+                            'success' => false,
+                            'message' => '无法执行操作，请重试！'
+                        ], JSON_UNESCAPED_UNICODE);
+                        exit;
+                    }
+                    
+                    // 通过 access_key 找到用户后，设置 session
+                    $_SESSION['user_id'] = $keyInfo['user_id'];
+                    $currentUserId = $keyInfo['user_id'];
+                }
+            }
+        }
+    }
 
     // 路由分发
     switch ($resource) {
@@ -384,7 +528,32 @@ try {
                         // 更新状态为在线
                         $user->updateStatus($result['user']['id'], 'online');
                         
-                        response_success($result['user'], '登录成功');
+                        // 生成 access_key 并保存到数据库
+                        $accessKey = bin2hex(random_bytes(32));
+                        $ipAddress = $_SERVER['REMOTE_ADDR'] ?? '未知';
+                        $deviceName = substr($_SERVER['HTTP_USER_AGENT'] ?? '未知设备', 0, 100);
+                        
+                        // 检查是否已存在该IP的记录
+                        $stmt = $conn->prepare("SELECT id FROM pc_keys WHERE user_id = ? AND ip_address = ?");
+                        $stmt->execute([$result['user']['id'], $ipAddress]);
+                        
+                        if ($stmt->fetch()) {
+                            // 如果存在，更新
+                            $stmt = $conn->prepare("UPDATE pc_keys SET access_key = ?, device_name = ?, created_at = NOW(), is_active = TRUE WHERE user_id = ? AND ip_address = ?");
+                            $stmt->execute([$accessKey, $deviceName, $result['user']['id'], $ipAddress]);
+                        } else {
+                            // 不存在，插入
+                            $stmt = $conn->prepare("INSERT INTO pc_keys (user_id, access_key, device_name, ip_address, created_at) VALUES (?, ?, ?, ?, NOW())");
+                            $stmt->execute([$result['user']['id'], $accessKey, $deviceName, $ipAddress]);
+                        }
+                        
+                        $result['user']['access_key'] = $accessKey;
+                        
+                        // 同时在顶层返回 access_key，方便前端获取
+                        $responseData = $result['user'];
+                        $responseData['access_key'] = $accessKey;
+                        
+                        response_success($responseData, '登录成功');
                     } else {
                         response_error($result['message']);
                     }
@@ -473,6 +642,104 @@ try {
             }
             break;
 
+        // ------------------------------------------
+        // 用户封禁检查接口
+        // ------------------------------------------
+        case 'user_check':
+            $current_user_id = check_auth();
+            
+            try {
+                $banInfo = $user->isBanned($current_user_id);
+                
+                if ($banInfo) {
+                    $banEnd = strtotime($banInfo['expires_at']);
+                    $now = time();
+                    $remaining = $banEnd > $now ? $banEnd - $now : 0;
+                    
+                    $stmt = $conn->prepare("SELECT ban_start FROM bans WHERE user_id = ? AND status = 'active'");
+                    $stmt->execute([$current_user_id]);
+                    $banStart = $stmt->fetchColumn();
+                    
+                    $randomCode = mt_rand(8526, 9999);
+                    
+                    response_error($banInfo['reason'], $randomCode, [
+                        'ban_time' => $banStart ?? date('Y-m-d H:i:s'),
+                        'ban_end_time' => $banInfo['expires_at'],
+                        'Remaining' => formatDuration($remaining)
+                    ]);
+                } else {
+                    response_success(['status' => 'normal', 'message' => '账号状态正常']);
+                }
+            } catch (Exception $e) {
+                error_log("[API-PC] user_check 错误: " . $e->getMessage());
+                response_success(['status' => 'normal', 'message' => '账号状态正常']);
+            }
+            break;
+            
+        // ------------------------------------------
+        // IP封禁检查接口
+        // ------------------------------------------
+        case 'ip_check':
+            $current_user_id = check_auth();
+            
+            try {
+                $ip_address = $_SERVER['REMOTE_ADDR'] ?? '';
+                
+                if (empty($ip_address)) {
+                    response_success(['status' => 'normal', 'message' => 'IP状态正常']);
+                    break;
+                }
+                
+                $stmt = $conn->prepare("
+                    SELECT COUNT(DISTINCT b.user_id) as banned_count
+                    FROM bans b
+                    JOIN users u ON b.user_id = u.id
+                    JOIN ip_registrations ipr ON u.id = ipr.user_id
+                    WHERE b.status = 'active' AND ipr.ip_address = ?
+                ");
+                $stmt->execute([$ip_address]);
+                $result = $stmt->fetch();
+                $bannedCount = $result['banned_count'] ?? 0;
+                
+                if ($bannedCount >= 5) {
+                    $stmt = $conn->prepare("SELECT * FROM ip_bans WHERE ip_address = ? AND status = 'active'");
+                    $stmt->execute([$ip_address]);
+                    $ipBan = $stmt->fetch();
+                    
+                    if ($ipBan) {
+                        $banEnd = strtotime($ipBan['ban_end']);
+                        $now = time();
+                        $remaining = $banEnd > $now ? $banEnd - $now : 0;
+                        
+                        $randomCode = mt_rand(3526, 8526);
+                        
+                        response_error('当前IP下有多个账号已被封禁！', $randomCode, [
+                            'ip_ban_time' => $ipBan['ban_start'],
+                            'ip_ban_end_time' => $ipBan['ban_end'],
+                            'Remaining' => formatDuration($remaining)
+                        ]);
+                    } else {
+                        $banStartTime = date('Y-m-d H:i:s');
+                        $banEndTime = date('Y-m-d H:i:s', strtotime('+24 hours'));
+                        $remaining = 24 * 3600;
+                        
+                        $randomCode = mt_rand(3526, 8526);
+                        
+                        response_error('当前IP下有多个账号已被封禁！', $randomCode, [
+                            'ip_ban_time' => $banStartTime,
+                            'ip_ban_end_time' => $banEndTime,
+                            'Remaining' => formatDuration($remaining)
+                        ]);
+                    }
+                } else {
+                    response_success(['status' => 'normal', 'message' => 'IP状态正常']);
+                }
+            } catch (Exception $e) {
+                error_log("[API-PC] ip_check 错误: " . $e->getMessage());
+                response_success(['status' => 'normal', 'message' => 'IP状态正常']);
+            }
+            break;
+            
         // ------------------------------------------
         // 用户模块 (User)
         // ------------------------------------------
@@ -730,6 +997,10 @@ try {
                     if (empty($receiver_id)) response_error('接收者ID不能为空');
                     if (empty($content)) response_error('消息内容不能为空');
                     
+                    $receiver_id = preg_replace('/^(friend|group)_/', '', $receiver_id);
+                    
+                    if (!is_numeric($receiver_id)) response_error('无效的接收者ID');
+                    
                     $result = $message->sendTextMessage($current_user_id, $receiver_id, $content);
                     if ($result['success']) {
                         response_success(['message_id' => $result['message_id']], '消息发送成功');
@@ -748,6 +1019,10 @@ try {
                     
                     if (empty($receiver_id)) response_error('接收者ID不能为空');
                     if (empty($file_path)) response_error('文件路径不能为空');
+                    
+                    $receiver_id = preg_replace('/^(friend|group)_/', '', $receiver_id);
+                    
+                    if (!is_numeric($receiver_id)) response_error('无效的接收者ID');
                     
                     $result = $message->sendFileMessage($current_user_id, $receiver_id, $file_path, $file_name, $file_size, $file_type, $audio_duration);
                     if ($result['success']) {
@@ -1439,21 +1714,55 @@ try {
                     response_error('缺少 path 参数', 400);
                 }
                 $path = str_replace('\\', '/', $path);
-                if (strpos($path, '..') !== false || !preg_match('#^uploads/#', $path)) {
+                if (strpos($path, '..') !== false) {
                     response_error('无效的路径', 400);
                 }
-                $full_path = $base_dir . '/' . $path;
+                
+                // 支持多种路径格式
+                $full_path = '';
+                
+                // 检查路径是否已包含 uploads/
+                if (preg_match('#^uploads/#', $path)) {
+                    $full_path = $base_dir . '/' . $path;
+                } else {
+                    // 尝试在 uploads/ 目录下查找
+                    $full_path = $base_dir . '/uploads/' . $path;
+                }
+                
+                // 如果文件不存在，尝试其他可能的路径
+                if (!file_exists($full_path) || !is_file($full_path)) {
+                    // 尝试检查 avatars/ 目录（旧版本可能存储在那里）
+                    $alternative_path = $base_dir . '/avatars/' . basename($path);
+                    if (file_exists($alternative_path) && is_file($alternative_path)) {
+                        $full_path = $alternative_path;
+                    } else {
+                        // 尝试检查 uploads/avatars/ 目录
+                        $avatars_path = $base_dir . '/uploads/avatars/' . basename($path);
+                        if (file_exists($avatars_path) && is_file($avatars_path)) {
+                            $full_path = $avatars_path;
+                        } else {
+                            // 尝试检查原始文件名（不带 uploads/ 前缀的情况）
+                            $original_path = $base_dir . '/' . basename($path);
+                            if (file_exists($original_path) && is_file($original_path)) {
+                                $full_path = $original_path;
+                            }
+                        }
+                    }
+                }
+                
+                // 如果仍然找不到文件，返回 404
                 if (!file_exists($full_path) || !is_file($full_path)) {
                     http_response_code(404);
                     exit;
                 }
+                
                 $mimes = [
                     'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png',
                     'gif' => 'image/gif', 'webp' => 'image/webp', 'svg' => 'image/svg+xml',
                     'mp4' => 'video/mp4', 'webm' => 'video/webm', 'ogg' => 'video/ogg',
                     'mp3' => 'audio/mpeg', 'wav' => 'audio/wav', 'pdf' => 'application/pdf'
                 ];
-                $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+                $ext = strtolower(pathinfo($full_path, PATHINFO_EXTENSION));
                 $ctype = $mimes[$ext] ?? 'application/octet-stream';
                 header('Content-Type: ' . $ctype);
                 header('Cache-Control: public, max-age=86400');
@@ -1485,7 +1794,7 @@ try {
                 $_FILES['file']['name'] = $new_name;
             }
             
-            $invalid_pattern = '/[<>:"|?*\\\\/\\x00-\\x1f]/';
+            $invalid_pattern = '/[<>:"|?*\\\\\\/\\x00-\\x1f]/';
             if (preg_match($invalid_pattern, $base_name) || preg_match($invalid_pattern, $file_ext)) {
                 response_error('非法文件，无法上传', 400);
             }
