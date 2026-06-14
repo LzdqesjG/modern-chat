@@ -4545,6 +4545,9 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                 const result = await response.json();
                 
                 if (result.success) {
+                    // 创建设备会话
+                    createDeviceSession(result.user);
+                    
                     // 显示登录成功提示
                     showSuccessModal();
                 } else {
@@ -4564,6 +4567,108 @@ $user_ip = $_SERVER['REMOTE_ADDR'];
                     alert('登录失败，请稍后重试');
                 }
             }
+        }
+        
+        // 创建设备会话
+        async function createDeviceSession(user) {
+            if (!user || !user.id) {
+                console.log('创建设备会话失败: 用户信息无效');
+                return;
+            }
+            
+            try {
+                const response = await fetch('api-pc.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        resource: 'device_session',
+                        action: 'create',
+                        data: {
+                            user_id: user.id,
+                            device_type: 'Web',
+                            device_name: 'Web Browser'
+                        }
+                    })
+                });
+                
+                const result = await response.json();
+                if (result.success && result.data && result.data.session_token) {
+                    // 保存会话token
+                    localStorage.setItem('session_token', result.data.session_token);
+                    console.log('网页端设备会话创建成功:', result.data.session_token);
+                    
+                    // 启动会话定时检查
+                    startSessionCheck();
+                } else {
+                    console.log('创建设备会话失败:', result.message || '未知错误');
+                }
+            } catch (e) {
+                console.log('创建设备会话失败:', e);
+            }
+        }
+        
+        // 会话检查定时器
+        let sessionCheckTimer = null;
+        
+        // 启动会话定时检查
+        function startSessionCheck() {
+            stopSessionCheck();
+            sessionCheckTimer = setInterval(verifySession, 30000); // 每30秒检查一次
+        }
+        
+        // 停止会话检查
+        function stopSessionCheck() {
+            if (sessionCheckTimer) {
+                clearInterval(sessionCheckTimer);
+                sessionCheckTimer = null;
+            }
+        }
+        
+        // 验证会话
+        async function verifySession() {
+            const sessionToken = localStorage.getItem('session_token');
+            if (!sessionToken) return;
+            
+            try {
+                const response = await fetch('api-pc.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        resource: 'device_session',
+                        action: 'verify',
+                        data: {
+                            session_token: sessionToken
+                        }
+                    })
+                });
+                
+                const result = await response.json();
+                if (!result.success) {
+                    // 会话无效，退出登录
+                    logout(result.message || '会话已失效');
+                }
+            } catch (e) {
+                console.log('会话验证失败:', e);
+            }
+        }
+        
+        // 退出登录
+        function logout(reason) {
+            localStorage.removeItem('session_token');
+            localStorage.removeItem('login_user');
+            localStorage.removeItem('access_key');
+            
+            // 保存退出原因
+            if (reason) {
+                localStorage.setItem('logout_reason', reason);
+            }
+            
+            // 刷新页面回到登录状态
+            window.location.reload();
         }
         
         // 关闭成功提示

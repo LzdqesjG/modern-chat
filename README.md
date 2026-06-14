@@ -1,4 +1,16 @@
-# Modern Chat - 现代化聊天系统-V2.5.00
+# ⚠️ 安全提示
+
+> **请在您的网页服务器中设置禁止访问 `config` 目录！**
+> 
+> 这是一个重要的安全措施，可以防止配置文件被未授权访问。
+> 
+> **Apache**: 在 `.htaccess` 中添加 `Deny from all`
+> 
+> **Nginx**: 在配置中添加 `location /config { deny all; }`
+
+---
+
+# Modern Chat - 现代化聊天系统-V2.1.20
 
 一个基于 PHP + MySQL + HTML 的现代化聊天系统，具有现代化的 UI 设计和丰富的功能。
 
@@ -9,6 +21,7 @@
   <a href="https://github.com/LzdqesjG/modern-chat/releases" target="_blank">
     <img alt="All releases" src="https://img.shields.io/github/downloads/LzdqesjG/modern-chat/total.svg" />
   </a>
+</p>
 
 点击链接加入QQ群聊【网页聊天室用户交流群】：(https://qm.qq.com/q/gn6F4IeCOY)[https://qm.qq.com/q/gn6F4IeCOY]
 
@@ -18,17 +31,18 @@
 
    ### 已部署好的体验网站
 
-  - https://chat.modern-chat.top/
+  - https://chat.hyacine.com.cn/chat
   - 如果觉得项目好可以向开发者赞助（自愿）
----
+  - wx:
+    <p>
+    <img src="https://www.varesa.top/wallpapers/1770705339865.png" width="256" height="256"/>
+    </p>
+  - zfb:
+    <p>
+    <img src="https://www.varesa.top/wallpapers/177070538832.jpg" width="256" height="256"/>
+    </p>
 ---
 
-   ### 手机端
-   
-  - <a href="https://github.com/Philia093-Cyrene/modern-chat-mobile" target="_blank">modern-chat-mobile（Modern-chat手机端）</a>
-   ### 电脑端
-  - <a href="https://github.com/Philia093-Cyrene/modern-chat-pc" target="_blank">modern-chat-pc（Modern-chat电脑端）</a>
----
 <p>
   <a href="https://github.com/LzdqesjG/modern-chat/releases/latest" target="_blank">
     <img alt="Latest GitHub release" src="https://img.shields.io/github/release/LzdqesjG/modern-chat.svg" />
@@ -49,10 +63,11 @@
 
 - 📱 **现代化 UI 设计** - 响应式设计，适配各种设备
 - 👥 **安装引导** - 简单易使用
-- 🔐 **用户认证** - 安全的注册和登录系统
-- 👥 **好友管理** - 添加好友、接受请求、查看好友列表
+- 🔐 **用户认证** - 安全的注册和登录系统，支持密码哈希加密存储
+- � **极验行为验证** - 集成 Geetest 4.0 行为验证，防止恶意注册和登录
+- �👥 **好友管理** - 添加好友、接受请求、查看好友列表和在线状态
 - 💬 **实时聊天** - 发送文本消息和文件
-- 📎 **文件传输** - 支持发送小于 150MB（可修改） 的文件
+- 📎 **文件传输** - 支持发送小于 150MB（可修改）的文件
 - 🟢 **在线状态** - 显示好友是否在线
 - 🔍 **好友搜索** - 快速查找好友
 - 📱 **响应式设计** - 适配移动端和桌面端
@@ -62,19 +77,13 @@
 - 📨 **群聊邀请** - 支持邀请好友加入群聊，包含审批流程
 - ⏳ **入群申请** - 普通成员邀请的好友需要管理员或群主审批才能入群
 - 🔒 **封禁系统** - 管理员可以封禁用户，被封禁用户无法登录和使用系统
-- 👨‍💼 **自动添加管理员好友** - 用户注册后自动添加Admin管理员为好友并自动通过，方便管理员沟通和管理
-- ⏱️ **会话时长配置** - 支持配置用户会话时长，默认为1小时，可在config.json或管理后台修改
+- 👨‍💼 **自动添加管理员好友** - 用户注册后自动添加Admin管理员为好友并自动通过
+- ⏱️ **会话时长配置** - 支持配置用户会话时长，默认为1小时
 - ⏪ **消息撤回** - 支持撤回2分钟内的消息和文件，撤回后显示撤回提示
 - ✏️ **重新编辑** - 撤回消息后可点击"重新编辑"按钮重新编辑消息
 - 🗑️ **文件撤回** - 撤回消息时自动删除服务器上的对应文件
 - 📱 **移动端支持** - 独立的移动端聊天页面，优化移动端体验
-- 👥 **移动端好友管理** - 移动端支持查看好友申请、同意/拒绝好友申请
-- 💬 **移动端聊天菜单** - 移动端聊天页面支持好友和群聊的操作菜单
-- 👥 **移动端群成员操作** - 移动端群成员列表支持向成员发送好友申请
-- 🗑️ **移动端删除好友** - 移动端支持删除好友功能
-- 📨 **移动端群聊操作** - 移动端支持查看群成员和退出群聊功能
 - 🎵 **音乐播放器** - 内置音乐播放器，支持随机播放歌曲
-- 📱 **电脑端音乐播放器** - 电脑端支持音乐播放器功能
 - 🎛️ **音量控制** - 支持调节音量大小
 - 🎮 **播放控制** - 支持播放/暂停、上一首、下一首
 - 📥 **音乐下载** - 支持下载当前播放的歌曲
@@ -83,8 +92,8 @@
 - ⚡ **Service Worker加速** - 支持缓存静态资源和用户头像，提升加载速度
 - 🌍 **世界大厅** - 自动创建的全员群聊，命名为"世界大厅-{编号}"
 - 🔄 **在线更新系统** - 管理员可以通过网页端在线更新系统，自动下载并安装更新
-- 🛡️ **安全验证** - 集成极验 (Geetest 4.0) 行为验证，防止恶意注册和登录
-- 📱 **短信验证** - 集成阿里云短信服务，支持手机号注册和验证（需根据引导页面自己配置）
+-  **短信验证** - 集成阿里云短信服务，支持手机号注册和验证
+- 📷 **图片右键保存** - 支持右键保存聊天中的图片到下载目录
 
 ## 技术栈
 
@@ -93,6 +102,8 @@
 - **数据库**: MySQL 5.7+
 - **数据库驱动**: PDO
 - **缓存**: Redis (用于在线用户计数)
+- **行为验证**: Geetest 4.0
+
 ## config.json 配置文件
 
 在config目录下，您需要修改一个 `config.json` 文件，用于存储聊天系统的配置信息和其他配置。以下是一个示例配置文件：
@@ -111,24 +122,23 @@
     "email_verify_api_Request": "POST",
     "email_verify_api_Verify_parameters": "message.result",
     "Random_song": false,
-    
+    "phone_sms": false
 }
 ```
 
-- `Create_a_group_chat_for_all_members`: 你希望用户注册后自动创建一个群聊，群聊名称为"世界大厅-{编号}"，例如：世界大厅-1.
-- `Restrict_registration`: 是否限制注册（如果配置了这个必须配置下面的Restrict_registration_ip的数量）.
-- `Restrict_registration_ip`: 你希望一个IP地址最多注册几个账号.
-- `user_name_max`: 你希望最大设置的用户名长度.
-- `ban_system`: 是否启用封禁系统.
-- `upload_files_max`: 你希望用户最大可发送的文件大小（MB）.
-- `Session_Duration`: 用户会话时长（小时），默认1小时.
-- `email_verify`: 是否启用邮箱验证.
-- `email_verify_api`: 邮箱验证 API 地址.
-- `email_verify_api_Request`: 邮箱验证 API 请求方法（GET 或 POST）.
-- `email_verify_api_Verify_parameters`: 邮箱验证 API 返回结果参数名（例如："message.result"）.
-- `Random_song`: 是否启用随机播放歌曲功能，true为启用，false为禁用.
-
-请根据您的实际配置修改这些值。
+- `Create_a_group_chat_for_all_members`: 是否自动创建全员群聊
+- `Restrict_registration`: 是否限制注册
+- `Restrict_registration_ip`: 一个IP地址最多注册的账号数量
+- `user_name_max`: 最大用户名长度
+- `ban_system`: 是否启用封禁系统
+- `upload_files_max`: 最大可发送文件大小（MB）
+- `Session_Duration`: 用户会话时长（小时）
+- `email_verify`: 是否启用邮箱验证
+- `email_verify_api`: 邮箱验证API地址
+- `email_verify_api_Request`: 邮箱验证API请求方法
+- `email_verify_api_Verify_parameters`: 邮箱验证API返回结果参数名
+- `Random_song`: 是否启用随机播放歌曲功能
+- `phone_sms`: 是否启用短信验证
 
 ## 安装步骤
 
@@ -176,6 +186,7 @@ chmod -R 777 avatars/ uploads/ config/
 ```bash
 mysql -u root -p < db.sql
 ```
+
 or 在 phpMyAdmin 中导入 `db.sql` 文件。
 
 #### 3. 配置数据库连接
@@ -196,6 +207,7 @@ define('DB_PASS', 'your_password');
 ```bash
 chmod 777 uploads/
 ```
+
 #### 5. 解锁网页
 
 删除网站目录下的lock文件并正式解锁 web 服务器。
@@ -276,11 +288,15 @@ docker-compose logs
 ```bash
 docker-compose restart
 ```
+
 ### 手动配置短信验证
 
 如果您没有配置短信验证 API，您可以手动配置短信验证。
+
 #### 1. 下载最新的文件
+
 下载 `send_sms.php` `register.php` `register_process.php` 文件到您的服务器目录中。
+
 #### 2. 配置短信验证 API
 
 编辑 `send_sms.php` 文件，修改并在文件第81-82更改以下配置（根据您的实际需求修改）：
@@ -303,6 +319,7 @@ $accessKeySecret = '你的阿里云的AccessKeySecret';
 ### 1. 注册账户
 
 访问 `register.php` 页面，填写用户名、邮箱和密码进行注册。（若使用方式一安装请忽略）
+
 注：如果您是方式二安装的请在首次注册一个Admin管理员账号，后续用户注册请使用普通用户名注册。
 
 ### 2. 登录系统
@@ -375,6 +392,7 @@ $accessKeySecret = '你的阿里云的AccessKeySecret';
 5. 点击"确认封禁"按钮
 
 被封禁用户将：
+
 - 无法在登录页面登录
 - 在线用户会收到封禁通知并在10秒后自动退出
 - 显示明确的封禁原因和预计解封时间
@@ -463,9 +481,9 @@ $accessKeySecret = '你的阿里云的AccessKeySecret';
 - 点击"发送好友申请"选项向该成员发送好友申请
 - 确认发送申请
 
-### 20. 音乐播放器使用说明
+### 19. 音乐播放器使用说明
 
-#### 20.1 基本操作
+#### 19.1 基本操作
 
 - **播放/暂停**：点击播放器中央的播放/暂停按钮
 - **上一首**：点击左侧的上一首按钮
@@ -474,7 +492,7 @@ $accessKeySecret = '你的阿里云的AccessKeySecret';
 - **下载歌曲**：点击下载按钮下载当前播放的歌曲
 - **切换播放器大小**：点击播放器右上角的+/-按钮
 
-#### 20.2 播放器功能
+#### 19.2 播放器功能
 
 - **自动播放**：页面加载完成后自动播放歌曲
 - **随机播放**：每次播放的歌曲都是随机的
@@ -484,7 +502,7 @@ $accessKeySecret = '你的阿里云的AccessKeySecret';
 - **进度显示**：显示当前播放时间和总时长
 - **响应式设计**：支持桌面端和移动端
 
-### 21. 移动端其他功能
+### 20. 移动端其他功能
 
 - 移动端支持发送文本消息和文件
 - 移动端支持查看好友在线状态
@@ -494,40 +512,40 @@ $accessKeySecret = '你的阿里云的AccessKeySecret';
 - 移动端支持消息撤回和重新编辑
 - 移动端支持音乐播放器功能
 
-### 22. 在线更新系统
+### 21. 在线更新系统
 
-#### 22.1 访问更新页面
+#### 21.1 访问更新页面
 
 - 管理员登录后，可以通过访问 `updata.php` 页面进入在线更新系统
 - 只有管理员才能访问此页面
 
-#### 22.2 查看更新信息
+#### 21.2 查看更新信息
 
 - 系统会自动连接到更新服务器，获取最新版本信息
 - 显示当前版本和最新版本对比
 - 显示更新内容和待更新文件列表
 
-#### 22.3 执行更新
+#### 21.3 执行更新
 
 - 点击"立即更新"按钮开始下载和安装更新
 - 系统会自动备份当前文件到 `old/` 目录
 - 自动下载并替换需要更新的文件
 - 显示更新成功或失败的文件数量
 
-#### 22.4 撤销更新
+#### 21.4 撤销更新
 
 - 如果更新后出现问题，可以点击"撤销更新"按钮恢复到更新前的版本
 - 系统会从 `old/` 目录恢复备份的文件
 - 撤销更新后，当前版本会恢复到更新前的状态
 
-#### 22.5 更新注意事项
+#### 21.5 更新注意事项
 
 - 请确保服务器有足够的磁盘空间
 - 更新过程中不要关闭浏览器
 - 建议在更新前备份重要数据
 - 更新后可能需要清除浏览器缓存
 
-### 23. 帮助中心
+### 22. 帮助中心
 
 - 在安装向导或系统使用过程中，您可以点击"常见问题"或"帮助"链接访问帮助中心
 - 帮助中心包含数据库密码获取、阿里云短信配置等常见问题的详细解答
@@ -535,12 +553,45 @@ $accessKeySecret = '你的阿里云的AccessKeySecret';
 
 ---
 
+## 桌面客户端
+
+Modern Chat 提供基于 Electron 的桌面客户端，支持 Windows（包括 Windows 7）系统。
+
+### 功能特性
+
+- 📱 **现代化界面** - 简洁美观的聊天界面设计
+- 💬 **实时消息** - 支持文字、图片、视频、音频等多种消息类型
+- 📷 **截图功能** - 支持全局快捷键 `Ctrl+Alt+D` 进行截图，直接发送
+- 📹 **视频播放** - 内置视频播放器，智能分片缓存
+- 🎵 **音频播放** - 支持音频消息播放，实时频谱可视化
+- 📥 **高速下载** - 支持 aria2c 高速下载和普通下载
+- 💾 **数据缓存** - IndexedDB 本地缓存，按服务器隔离
+- 🖥️ **系统托盘** - 最小化到系统托盘，支持消息闪烁提醒
+- ⚡ **自动更新** - 支持应用自动更新
+
+### 下载地址
+
+- **Windows 64位**: [Modern Chat-0.0.5-x64-setup.exe](download/Win/x64/Modern Chat-0.0.5-setup.exe)
+- **Windows 32位**: [Modern Chat-0.0.5-x86-setup.exe](download/Win/x86/Modern Chat-0.0.5-setup.exe)
+- **Windows 7 x86**: 使用 `win7-x86-package.json` 配置构建
+
+### 版本日志
+
+#### v0.0.5
+- ✅ 合并音量控制按钮到控制按钮行
+- ✅ 添加图片右键保存功能
+- ✅ 禁用自动打开开发者工具
+- ✅ 修复版本更新提示问题（V0.0.5错误提示更新）
+- ✅ 自定义安装程序页面，显示详细安装信息
+- ✅ 修复安装程序标题截断问题
+
 ## 安全说明
 
 - 密码使用 PHP 内置的 `password_hash()` 函数进行哈希存储
 - 使用 PDO 预处理语句防止 SQL 注入
 - 文件上传经过严格的类型和大小验证
 - 错误信息不包含敏感内容
+- 使用极验行为验证防止恶意注册和登录
 
 ## 浏览器支持
 
@@ -550,6 +601,9 @@ $accessKeySecret = '你的阿里云的AccessKeySecret';
 - Edge
 - via
 - 主流浏览器
-- 声明 : 请确保系统和浏览器支持网页功能否则将导致部分功能不可用，Windows：推荐使用Windows7 64位等以上版本系统 Linux：无限制 android：无限制 IOS：无限制
+
+声明: 请确保系统和浏览器支持网页功能否则将导致部分功能不可用，Windows：推荐使用Windows7 64位等以上版本系统 Linux：无限制 android：无限制 IOS：无限制
+
 ## 许可证
+
 MIT License

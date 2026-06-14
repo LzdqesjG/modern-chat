@@ -94,6 +94,26 @@ CREATE TABLE IF NOT EXISTS scan_login (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- 设备会话表（用于多设备登录管理）
+CREATE TABLE IF NOT EXISTS device_sessions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    session_token VARCHAR(100) NOT NULL UNIQUE,
+    device_type ENUM('PC', 'Web', 'Mobile') NOT NULL,
+    device_name VARCHAR(100) DEFAULT NULL,
+    ip_address VARCHAR(50) NOT NULL,
+    user_agent VARCHAR(500) DEFAULT NULL,
+    login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_active BOOLEAN DEFAULT TRUE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- 设备会话表索引
+CREATE INDEX IF NOT EXISTS idx_device_sessions_user_id ON device_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_device_sessions_session_token ON device_sessions(session_token);
+CREATE INDEX IF NOT EXISTS idx_device_sessions_is_active ON device_sessions(is_active);
+
 -- 群聊表
 CREATE TABLE IF NOT EXISTS `groups` (
     id INT AUTO_INCREMENT PRIMARY KEY,

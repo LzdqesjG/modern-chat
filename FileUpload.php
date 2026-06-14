@@ -40,11 +40,39 @@ class FileUpload {
             // 禁止上传的网页格式文件扩展名
             $forbidden_extensions = ['html', 'htm', 'php', 'asp', 'aspx', 'jsp', 'js', 'css', 'xml', 'svg', 'xhtml', 'shtml', 'phtml', 'pl', 'py', 'cgi', 'php3', 'php4', 'php5', 'php7', 'php8', 'jspf', 'jspx', 'wss', 'do', 'action', 'cfm', 'cfml', 'cfc', 'lua', 'rb', 'go', 'sh', 'bat', 'cmd', 'exe', 'dll', 'com', 'pif', 'scr', 'jsx', 'tsx', 'ts', 'jsonp', 'vbs', 'vbe', 'wsf', 'wsc', 'htaccess', 'htpasswd', 'ini', 'conf', 'config', 'inc', 'module', 'theme', 'tpl', 'twig', 'blade', 'mustache', 'ejs', 'hbs', 'pug', 'jade', 'haml', 'slim', 'liquid', 'jinja2', 'nunjucks', 'handlebars', 'marko', 'riot', 'vue', 'svelte', 'angular', 'react', 'ember', 'backbone', 'marionette', 'knockout', 'meteor', 'polymer', 'aurelia', 'vuex', 'redux', 'mobx', 'flux', 'relay', 'apollo', 'graphql', 'rest', 'api', 'swagger', 'openapi', 'raml', 'oas', 'soap', 'wsdl', 'wadl', 'json-schema', 'xml-schema', 'xsd', 'dtd', 'rdf', 'owl', 'turtle', 'n3', 'ntriples', 'jsonld', 'microdata', 'rdfa', 'schema', 'structured-data', 'meta', 'link', 'script', 'style', 'iframe', 'frame', 'frameset', 'object', 'embed', 'applet', 'param', 'source', 'code', 'pre', 'textarea', 'input', 'select', 'option', 'form', 'button', 'submit', 'reset', 'image', 'checkbox', 'radio', 'file', 'hidden', 'password', 'tel', 'email', 'url', 'search', 'number', 'range', 'color', 'date', 'time', 'datetime', 'datetime-local', 'month', 'week'];
             
-            // 获取文件扩展名，防止::DATA流绕过
+            // 获取原始文件名（不进行basename处理，保留完整路径用于安全检查）
+            $original_filename = $file['name'];
+            
+            // 检查文件名中是否包含NTFS ADS流标记（防止ADS流绕过）
+            if (strpos($original_filename, ':') !== false) {
+                // 检查是否包含ADS流标记
+                $ads_patterns = [
+                    '/::DATA$/i',          // 标准ADS流标记
+                    '/:\$DATA$/i',         // 变体形式
+                    '/::[A-Za-z0-9_]+$/i', // 任意ADS流名称
+                    '/:\$[A-Za-z0-9_]+$/i',// 变体形式
+                ];
+                
+                foreach ($ads_patterns as $pattern) {
+                    if (preg_match($pattern, $original_filename)) {
+                        error_log("NTFS ADS stream detected in filename: " . $original_filename);
+                        return ['success' => false, 'message' => '禁止上传包含数据流的文件'];
+                    }
+                }
+            }
+            
+            // 使用basename获取文件名（去除路径）
             $original_name = basename($file['name']);
             
-            // 移除Windows ::DATA流
+            // 移除Windows ::DATA流（双重防护）
             $original_name = preg_replace('/::DATA$/i', '', $original_name);
+            $original_name = preg_replace('/:\$DATA$/i', '', $original_name);
+            
+            // 再次检查处理后的文件名是否仍然包含冒号（可能表示隐藏的ADS流）
+            if (strpos($original_name, ':') !== false) {
+                error_log("Suspicious filename with colon detected: " . $original_name);
+                return ['success' => false, 'message' => '文件名包含非法字符'];
+            }
             
             // 获取真实扩展名
             $extension = strtolower(pathinfo($original_name, PATHINFO_EXTENSION));

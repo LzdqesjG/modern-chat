@@ -39,24 +39,51 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// 获取请求数据 (兼容 JSON 和 Form Data，APP 端可能发 JSON 但 Content-Type 不准确)
+// 获取请求数据 (兼容 JSON、Form Data 和 GET 参数)
 function get_request_data() {
-    $content_type = $_SERVER['CONTENT_TYPE'] ?? '';
-    $input = file_get_contents('php://input');
     $data = [];
     
-    if (!empty($input)) {
+    // 1. 尝试解析 JSON 数据（优先）
+    $input = @file_get_contents('php://input');
+    if ($input !== false && !empty($input)) {
         $decoded = json_decode($input, true);
         if (is_array($decoded)) {
             $data = $decoded;
         }
     }
-    if (strpos($content_type, 'application/json') !== false && !empty($data)) {
-        return $data;
+    
+    // 2. 如果 JSON 解析失败或无法获取，降级使用其他方法获取 POST 数据
+    if (empty($data)) {
+        // 尝试获取原始 POST 数据（某些环境下可能需要特殊处理）
+        if (!empty($_POST)) {
+            $data = $_POST;
+        } else {
+            // 尝试其他方式获取 POST 数据
+            $raw_post = '';
+            if (isset($HTTP_RAW_POST_DATA)) {
+                $raw_post = $HTTP_RAW_POST_DATA;
+            } elseif (function_exists('http_get_request_body')) {
+                $raw_post = http_get_request_body();
+            }
+            
+            if (!empty($raw_post)) {
+                $decoded = json_decode($raw_post, true);
+                if (is_array($decoded)) {
+                    $data = $decoded;
+                }
+            }
+        }
     }
-    if (!empty($_POST)) {
-        return array_merge($data, $_POST);
+    
+    // 3. 合并 GET 参数（优先级最低）
+    if (!empty($_GET)) {
+        foreach ($_GET as $key => $value) {
+            if (!isset($data[$key])) {
+                $data[$key] = $value;
+            }
+        }
     }
+    
     return $data;
 }
 
@@ -64,6 +91,15 @@ function get_request_data() {
 $request_data = get_request_data();
 $resource = $request_data['resource'] ?? $_GET['resource'] ?? '';
 $action = $request_data['action'] ?? $_GET['action'] ?? '';
+
+// 检查请求参数
+$has_other_params = false;
+foreach ($request_data as $key => $value) {
+    if ($key !== 'resource' && $key !== 'action') {
+        $has_other_params = true;
+        break;
+    }
+}
 
 // APP 版本信息接口（无需登录，手机端检查更新用）
 if ($resource === 'version' && ($action === 'app' || $action === '')) {
@@ -112,6 +148,42 @@ if (empty($resource)) {
         ],
         'usage' => 'POST/GET with resource and action parameters'
     ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    exit;
+}
+
+// 如果选择了板块但是没有指定操作
+if (!empty($resource) && empty($action)) {
+    http_response_code(400);
+    echo json_encode([
+        'success' => false,
+        'message' => '未指定的操作',
+        'resource' => $resource
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// 允许不需要额外参数的接口列表
+$allow_no_params = [
+    'friends/list',
+    'friends/get_requests',
+    'groups/list',
+    'auth/logout',
+    'auth/check_status',
+    'sessions/list',
+    'announcements/get'
+];
+
+$request_key = $resource . '/' . $action;
+
+// 如果都指定了但是没有传递参数，且不在允许列表中
+if (!empty($resource) && !empty($action) && !$has_other_params && !in_array($request_key, $allow_no_params)) {
+    http_response_code(400);
+    echo json_encode([
+        'success' => false,
+        'message' => '未传递参数',
+        'resource' => $resource,
+        'action' => $action
+    ], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -255,8 +327,18 @@ function check_auth() {
 // ==========================================
 
 try {
-    // 使用已定义的变量
-    $data = $request_data;
+    // 获取业务数据
+    // 支持两种格式：
+    // 1. PC客户端格式：{resource, action, data: {...}}
+    // 2. 手机端APP格式：{resource, action, ...data}
+    if (isset($request_data['data']) && is_array($request_data['data'])) {
+        // PC客户端格式：数据在 data 字段中
+        $data = $request_data['data'];
+    } else {
+        // 手机端APP格式：数据直接在根级别，排除 resource 和 action
+        $data = $request_data;
+        unset($data['resource'], $data['action']);
+    }
     
     // 全局参数
     $id = $data['id'] ?? null;
@@ -298,11 +380,27 @@ try {
                         $_SESSION['email'] = $result['user']['email'];
                         
                         // 移除敏感信息
-                        unset($result['user']['password']);
-                        unset($result['user']['security_question']);
-                        unset($result['user']['security_answer']);
-                        unset($result['user']['reset_token']);
-                        unset($result['user']['reset_token_expires']);
+                        $sensitive_fields = [
+                            'password',
+                            'security_question',
+                            'security_answer',
+                            'reset_token',
+                            'reset_token_expires',
+                            'key',           // 认证令牌
+                            'token',         // 认证令牌
+                            'api_key',       // API密钥
+                            'access_token',  // 访问令牌
+                            'refresh_token', // 刷新令牌
+                            'secret',        // 密钥
+                            'salt',          // 盐值
+                            'vkey',          // vkey认证密钥
+                        ];
+                        
+                        foreach ($sensitive_fields as $field) {
+                            if (isset($result['user'][$field])) {
+                                unset($result['user'][$field]);
+                            }
+                        }
                         
                         // 更新状态为在线
                         $user->updateStatus($result['user']['id'], 'online');
@@ -404,17 +502,34 @@ try {
             
             switch ($action) {
                 case 'get_info':
-                    // 默认获取当前用户，也可获取指定用户
-                    $target_user_id = $data['user_id'] ?? $current_user_id;
+                    // 只能获取当前登录用户自己的信息，禁止通过 user_id 参数查询他人信息
+                    $target_user_id = $current_user_id;
                     $user_info = $user->getUserById($target_user_id);
                     
                     if ($user_info) {
-                        // 移除敏感信息
-                        unset($user_info['password']);
-                        unset($user_info['security_question']);
-                        unset($user_info['security_answer']);
-                        unset($user_info['reset_token']);
-                        unset($user_info['reset_token_expires']);
+                        // 移除敏感信息（扩展敏感字段列表）
+                        $sensitive_fields = [
+                            'password',
+                            'security_question',
+                            'security_answer',
+                            'reset_token',
+                            'reset_token_expires',
+                            'vkey',          // 认证密钥
+                            'key',           // 认证令牌
+                            'token',         // 认证令牌
+                            'api_key',       // API密钥
+                            'access_token',  // 访问令牌
+                            'refresh_token', // 刷新令牌
+                            'secret',        // 密钥
+                            'salt',          // 盐值
+                        ];
+                        
+                        foreach ($sensitive_fields as $field) {
+                            if (isset($user_info[$field])) {
+                                unset($user_info[$field]);
+                            }
+                        }
+                        
                         response_success($user_info);
                     } else {
                         response_error('用户不存在', 404);
@@ -1400,12 +1515,13 @@ try {
         // vkey 密钥管理模块 (VKey)
         // ------------------------------------------
         case 'vkey':
+            // 必须登录才能操作 vkey，且只能操作自己的 vkey
+            $current_user_id = check_auth();
+            
             switch ($action) {
                 case 'generate':
-                    $user_id = (int)($data['user_id'] ?? 0);
-                    if ($user_id <= 0) {
-                        response_error('用户ID无效');
-                    }
+                    // 强制只能为当前登录用户生成 vkey，禁止传入 user_id 指定他人
+                    $user_id = $current_user_id;
                     
                     $stmt = $conn->prepare("SELECT vkey FROM users WHERE id = ? AND is_deleted = FALSE");
                     $stmt->execute([$user_id]);
@@ -1423,10 +1539,8 @@ try {
                     break;
                     
                 case 'get':
-                    $user_id = (int)($data['user_id'] ?? 0);
-                    if ($user_id <= 0) {
-                        response_error('用户ID无效');
-                    }
+                    // 强制只能获取当前登录用户的 vkey
+                    $user_id = $current_user_id;
                     
                     $stmt = $conn->prepare("SELECT vkey FROM users WHERE id = ? AND is_deleted = FALSE");
                     $stmt->execute([$user_id]);
@@ -1450,26 +1564,17 @@ try {
         case 'scan_login':
             switch ($action) {
                 case 'confirm':
+                    // confirm 必须由已登录的 APP 端调用，绑定当前登录用户身份
+                    $current_user_id = check_auth();
+                    
                     $qid = $data['qid'] ?? '';
-                    $vkey = $data['vkey'] ?? '';
                     
                     if (empty($qid)) {
                         response_error('登录标识不能为空');
                     }
                     
-                    if (empty($vkey)) {
-                        response_error('密钥错误，请重新尝试！');
-                    }
-                    
-                    $stmt = $conn->prepare("SELECT id FROM users WHERE vkey = ? AND is_deleted = FALSE");
-                    $stmt->execute([$vkey]);
-                    $user_data = $stmt->fetch();
-                    
-                    if (!$user_data) {
-                        response_error('密钥错误，请重新尝试！');
-                    }
-                    
-                    $user_id = $user_data['id'];
+                    // 使用当前登录用户的身份，不再接受外部传入的 vkey
+                    $user_id = $current_user_id;
                     
                     $stmt = $conn->prepare("SELECT * FROM scan_login WHERE qid = ? AND expire_at > NOW() AND status IN ('pending', 'scanned')");
                     $stmt->execute([$qid]);
