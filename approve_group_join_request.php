@@ -2,6 +2,7 @@
 require_once 'security_check.php';
 // 检查用户是否登�?
 require_once 'config.php';
+check_api_access();
 require_once 'db.php';
 require_once 'Group.php';
 

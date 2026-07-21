@@ -1,4 +1,8 @@
 <?php
+if (basename($_SERVER['SCRIPT_NAME'] ?? '') === basename(__FILE__)) {
+    http_response_code(404);
+    exit;
+}
 /**
  * RSA 加密工具类
  * 用于生成密钥对、加密和解密数据

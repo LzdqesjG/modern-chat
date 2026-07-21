@@ -1,6 +1,7 @@
 <?php
 // 检查用户是否登录
 require_once 'config.php';
+check_api_access();
 require_once 'db.php';
 require_once 'Group.php';
 

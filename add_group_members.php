@@ -14,6 +14,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 try {
     require_once 'config.php';
+    check_api_access();
     require_once 'db.php';
     require_once 'Group.php';
 
@@ -54,8 +55,8 @@ try {
     $group = new Group($conn);
 
     // 检查用户是否是群聊管理员或群主
-    $stmt = $conn->prepare("SELECT gm.is_admin, g.owner_id FROM group_members gm
-                         JOIN `groups` g ON gm.group_id = g.id
+    $stmt = $conn->prepare("SELECT (gm.role = 'admin') as is_admin, g.owner_id FROM group_members gm
+                         JOIN groups g ON gm.group_id = g.id
                          WHERE gm.group_id = ? AND gm.user_id = ?");
     $stmt->execute([$group_id, $user_id]);
     $member_info = $stmt->fetch();
@@ -80,25 +81,6 @@ try {
     if ($total_count > 2000) {
         echo json_encode(['success' => false, 'message' => '群聊成员数量已达上限（2000人）']);
         exit;
-    }
-
-    // 验证 friend_ids 是否都是当前用户的好友
-    require_once 'Friend.php';
-    $friend = new Friend($conn);
-    
-    foreach ($friend_ids as $friend_id) {
-        $friend_id = intval($friend_id);
-        
-        // 跳过自己
-        if ($friend_id == $user_id) {
-            continue;
-        }
-        
-        // 检查是否为好友关系
-        if (!$friend->isFriend($user_id, $friend_id)) {
-            echo json_encode(['success' => false, 'message' => '只能添加好友到群组']);
-            exit;
-        }
     }
 
     // 开始事务

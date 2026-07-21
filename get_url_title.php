@@ -1,12 +1,13 @@
 <?php
 require_once 'security_check.php';
 require_once 'config.php';
+check_api_access();
 
-// 检查是否登�?
+// 检查是否登�?
 session_start();
 if (!isset($_SESSION['user_id'])) {
     http_response_code(403);
-    echo json_encode(['error' => 'Unauthorized']);
+    echo json_encode(['error' => '未授权']);
     exit;
 }
 
@@ -25,7 +26,7 @@ if (!filter_var($url, FILTER_VALIDATE_URL)) {
     exit;
 }
 
-// 初始�?CURL
+// 初始�?CURL
 $ch = curl_init();
 curl_setopt($ch, CURLOPT_URL, $url);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
@@ -35,7 +36,7 @@ curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
 // 获取 Header
 curl_setopt($ch, CURLOPT_HEADER, 1);
-// 获取�?32KB
+// 获取�?32KB
 curl_setopt($ch, CURLOPT_RANGE, '0-32768'); 
 
 $response = curl_exec($ch);
@@ -50,14 +51,14 @@ curl_close($ch);
 $title = null;
 $embeddable = true;
 
-// 检�?Header 中的 X-Frame-Options �?Content-Security-Policy
+// 检�?Header 中的 X-Frame-Options �?Content-Security-Policy
 if ($header_text) {
-    // 检�?X-Frame-Options
+    // 检�?X-Frame-Options
     if (preg_match('/x-frame-options:\s*(DENY|SAMEORIGIN)/i', $header_text)) {
         $embeddable = false;
     }
     
-    // 检�?CSP
+    // 检�?CSP
     if (preg_match('/content-security-policy:.*frame-ancestors\s+([^\r\n]+)/i', $header_text, $matches)) {
         $ancestors = $matches[1];
         if (stripos($ancestors, "'none'") !== false || stripos($ancestors, "'self'") !== false) {

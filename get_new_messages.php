@@ -14,8 +14,10 @@ if (session_status() === PHP_SESSION_NONE) {
 
 try {
     require_once 'config.php';
-    require_once 'db.php';
-    require_once 'Message.php';
+    check_api_access();
+require_once 'db.php';
+require_once 'Message.php';
+require_once 'Friend.php';
 
     // 检查用户是否登录
     if (!isset($_SESSION['user_id'])) {

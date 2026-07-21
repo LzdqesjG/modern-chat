@@ -2,6 +2,7 @@
 require_once 'security_check.php';
 require_once 'config.php';
 require_once 'db.php';
+check_api_access();
 
 if ($conn === null) {
     header('Location: login.php?error=' . urlencode('数据库连接失败，请稍后重试'));

@@ -1,4 +1,8 @@
 <?php
+if (basename($_SERVER['SCRIPT_NAME'] ?? '') === basename(__FILE__)) {
+    http_response_code(404);
+    exit;
+}
 
 /**
  * Redis管理器类，用于管理Redis连接和在线人数存储
@@ -27,6 +31,9 @@ class RedisManager {
      * @param PDO $conn 数据库连接，用于降级方案
      */
     public function __construct($conn) {
+        if (!$conn) {
+            throw new Exception("数据库连接失败");
+        }
         $this->conn = $conn;
         
         try {

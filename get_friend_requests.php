@@ -12,6 +12,9 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+require_once 'config.php';
+check_api_access();
+
 // 检查用户是否登录
 if (!isset($_SESSION['user_id'])) {
     echo json_encode(['success' => false, 'message' => '用户未登录']);

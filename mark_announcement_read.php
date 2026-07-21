@@ -2,6 +2,7 @@
 // 标记公告为已读
 
 require_once 'config.php';
+check_api_access();
 require_once 'db.php';
 require_once 'User.php';
 

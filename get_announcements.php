@@ -2,6 +2,7 @@
 // 获取最新的系统公告
 
 require_once 'config.php';
+check_api_access();
 require_once 'db.php';
 require_once 'User.php';
 
@@ -9,7 +10,9 @@ header('Content-Type: application/json');
 
 try {
     // 检查用户是否登录
-    session_start();
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
     $user_id = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : null;
     
     // 检查数据库连接

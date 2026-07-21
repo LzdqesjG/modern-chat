@@ -1,4 +1,8 @@
 <?php
+if (basename($_SERVER['SCRIPT_NAME'] ?? '') === basename(__FILE__)) {
+    http_response_code(404);
+    exit;
+}
 require_once 'db.php';
 
 class Friend {
@@ -137,6 +141,11 @@ class Friend {
             error_log("Is Friend Error: " . $e->getMessage());
             return false;
         }
+    }
+    
+    // areFriends 是 isFriend 的别名方法
+    public function areFriends($user_id, $friend_id) {
+        return $this->isFriend($user_id, $friend_id);
     }
     
     // 删除好友

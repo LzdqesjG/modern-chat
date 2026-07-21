@@ -1,6 +1,7 @@
 <?php
 require_once 'config.php';
 require_once 'db.php';
+check_api_access();
 
 header('Content-Type: application/json');
 

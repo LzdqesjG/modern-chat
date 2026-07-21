@@ -4,6 +4,7 @@ session_start();
 header('Content-Type: application/json; charset=utf-8');
 
 require_once 'config.php';
+check_api_access();
 require_once 'db.php';
 
 // 检查是否登�?

@@ -1,4 +1,8 @@
 <?php
+if (basename($_SERVER['SCRIPT_NAME'] ?? '') === basename(__FILE__)) {
+    http_response_code(404);
+    exit;
+}
 require_once 'db.php';
 
 class Message {
@@ -38,16 +42,16 @@ class Message {
     }
     
     // 发送文件消息
-    public function sendFileMessage($sender_id, $receiver_id, $file_path, $file_name, $file_size, $file_type = null) {
+    public function sendFileMessage($sender_id, $receiver_id, $file_path, $file_name, $file_size, $file_type = null, $upload_id = null, $file_url = null) {
         try {
             // 确保必要的表和列存在
             $this->ensureTablesExist();
             
             $stmt = $this->conn->prepare(
-                "INSERT INTO messages (sender_id, receiver_id, file_path, file_name, file_size, file_type, type, status, created_at) 
-                 VALUES (?, ?, ?, ?, ?, ?, 'file', 'sent', NOW())"
+                "INSERT INTO messages (sender_id, receiver_id, file_path, file_name, file_size, file_type, upload_id, file_url, type, status, created_at) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'file', 'sent', NOW())"
             );
-            $stmt->execute([$sender_id, $receiver_id, $file_path, $file_name, $file_size, $file_type]);
+            $stmt->execute([$sender_id, $receiver_id, $file_path, $file_name, $file_size, $file_type, $upload_id, $file_url]);
             
             $message_id = $this->conn->lastInsertId();
             $this->updateSession($sender_id, $receiver_id, $message_id);
@@ -344,8 +348,9 @@ class Message {
             $stmt = $this->conn->prepare("DELETE FROM messages WHERE id = ?");
             $stmt->execute([$message_id]);
             
-            // 5. 删除对应的文件
-            $this->deleteFile($file_path);
+            // 5. 删除对应的物理文件（file_path 现在是 {upload_id}/{stored_name} 相对格式）
+            $full_path = __DIR__ . '/files.modern-chat.top/uploads/' . $file_path;
+            $this->deleteFile($full_path);
             
             return ['success' => true, 'message' => '消息已成功撤回'];
         } catch(PDOException $e) {

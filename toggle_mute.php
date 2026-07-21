@@ -14,6 +14,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 try {
     require_once 'config.php';
+    check_api_access();
     require_once 'db.php';
 
     // 检查用户是否登录

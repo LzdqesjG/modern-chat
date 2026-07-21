@@ -2,6 +2,8 @@
 // 检查群聊是否被封禁
 header('Content-Type: application/json');
 
+require_once 'config.php';
+check_api_access();
 require_once 'db.php';
 
 $group_id = isset($_GET['group_id']) ? intval($_GET['group_id']) : 0;
@@ -13,7 +15,7 @@ if ($group_id <= 0) {
 
 try {
     // 检查群聊是否存在
-    $stmt = $conn->prepare("SELECT name FROM `groups` WHERE id = ?");
+    $stmt = $conn->prepare("SELECT name FROM groups WHERE id = ?");
     $stmt->execute([$group_id]);
     $group = $stmt->fetch();
     

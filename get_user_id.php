@@ -1,6 +1,7 @@
 <?php
 require_once 'config.php';
 require_once 'db.php';
+check_api_access();
 
 // 检查用户是否登录
 if (!isset($_SESSION['user_id'])) {

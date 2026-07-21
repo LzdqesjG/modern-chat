@@ -123,6 +123,74 @@ if ($resource === 'version' && ($action === 'app' || $action === '')) {
     exit;
 }
 
+// ═══════════════════════════════════════════════════════
+// 辅助函数：为文件消息补充 file_url（走 file 子域名）
+// ═══════════════════════════════════════════════════════
+function enrich_file_url(&$msg, $conn) {
+    // 只处理有 file_path 的消息
+    if (empty($msg['file_path'])) return;
+    
+    // 如果已有完整的 https:// file URL，直接使用
+    if (!empty($msg['file_url']) && strpos($msg['file_url'], 'https://') === 0) return;
+    
+    // 预先获取 vkey（后续构建代理 URL 需要）
+    $vkey = null;
+    try {
+        if (function_exists('get_vkey_by_user_id')) {
+            $uid = $_SESSION['user_id'] ?? 0;
+            if ($uid > 0) $vkey = get_vkey_by_user_id($uid, $conn);
+        }
+    } catch (Exception $e) {}
+    
+    // 如果有 upload_id，通过代理 URL 访问（避免前端 fetch 跨域）
+    if (!empty($msg['upload_id'])) {
+        $stored_name = $msg['stored_name'] ?? basename($msg['file_path']);
+        if ($vkey && function_exists('generate_proxy_url_with_id')) {
+            $msg['file_url'] = generate_proxy_url_with_id($msg['upload_id'], $stored_name, $vkey);
+        } else {
+            $msg['file_url'] = 'https://files.modern-chat.top/list.php?id=' . urlencode($msg['upload_id']) 
+                             . '&file=' . urlencode($stored_name);
+        }
+        return;
+    }
+    
+    // 尝试从 file_uploads 表查找
+    try {
+        $stmt = $conn->prepare("SELECT upload_id, stored_name FROM file_uploads WHERE file_path = ? LIMIT 1");
+        $stmt->execute([$msg['file_path']]);
+        $row = $stmt->fetch();
+        if ($row) {
+            $msg['upload_id'] = $row['upload_id'];
+            if ($vkey && function_exists('generate_proxy_url_with_id')) {
+                $msg['file_url'] = generate_proxy_url_with_id($row['upload_id'], $row['stored_name'], $vkey);
+            } else {
+                $msg['file_url'] = 'https://files.modern-chat.top/list.php?id=' . urlencode($row['upload_id']) 
+                                 . '&file=' . urlencode($row['stored_name']);
+            }
+            return;
+        }
+    } catch (Exception $e) {}
+    
+    // 回退：通过 generate_proxy_url 构建（走 vkey+token 链路）
+    if ($vkey && function_exists('generate_proxy_url')) {
+        // 将绝对路径转为相对路径
+        $relative_path = $msg['file_path'];
+        $possible_bases = [
+            realpath(__DIR__ . '/..') . '/',
+            realpath(__DIR__) . '/',
+            '/www/wwwroot/',
+            '/www/files.modern-chat.top/',
+        ];
+        foreach ($possible_bases as $base) {
+            if (strpos($relative_path, $base) === 0) {
+                $relative_path = substr($relative_path, strlen($base));
+                break;
+            }
+        }
+        $msg['file_url'] = generate_proxy_url(ltrim($relative_path, '/'), $vkey);
+    }
+}
+
 // 如果没有 resource 参数，返回 API 状态信息
 if (empty($resource)) {
     echo json_encode([
@@ -379,7 +447,16 @@ try {
                         $_SESSION['username'] = $result['user']['username'];
                         $_SESSION['email'] = $result['user']['email'];
                         
-                        // 移除敏感信息
+                        // 确保用户有 vkey（用于 list.php 文件访问认证）
+                        $vkey = $result['user']['vkey'] ?? null;
+                        if (empty($vkey)) {
+                            $vkey = bin2hex(random_bytes(32));
+                            $stmt = $conn->prepare("UPDATE users SET vkey = ? WHERE id = ?");
+                            $stmt->execute([$vkey, $result['user']['id']]);
+                        }
+                        $result['user']['vkey'] = $vkey;
+                        
+                        // 移除敏感信息（vkey 现在需要返回给客户端，已从列表中移除）
                         $sensitive_fields = [
                             'password',
                             'security_question',
@@ -393,7 +470,6 @@ try {
                             'refresh_token', // 刷新令牌
                             'secret',        // 密钥
                             'salt',          // 盐值
-                            'vkey',          // vkey认证密钥
                         ];
                         
                         foreach ($sensitive_fields as $field) {
@@ -507,6 +583,11 @@ try {
                     $user_info = $user->getUserById($target_user_id);
                     
                     if ($user_info) {
+                        // 处理头像URL
+                        if (!empty($user_info['avatar']) && strpos($user_info['avatar'], 'http') !== 0) {
+                            $user_info['avatar'] = generate_file_url($user_info['avatar'], $_SESSION['vkey'] ?? '');
+                        }
+                        
                         // 移除敏感信息（扩展敏感字段列表）
                         $sensitive_fields = [
                             'password',
@@ -560,6 +641,11 @@ try {
                         response_error('搜索关键词不能为空');
                     }
                     $users = $user->searchUsers($keyword, $current_user_id);
+                    foreach ($users as &$user_item) {
+                        if (!empty($user_item['avatar']) && strpos($user_item['avatar'], 'http') !== 0) {
+                            $user_item['avatar'] = generate_file_url($user_item['avatar'], $_SESSION['vkey'] ?? '');
+                        }
+                    }
                     response_success($users);
                     break;
                     
@@ -627,6 +713,11 @@ try {
             switch ($action) {
                 case 'list':
                     $friends = $friend->getFriends($current_user_id);
+                    foreach ($friends as &$friend_item) {
+                        if (!empty($friend_item['avatar']) && strpos($friend_item['avatar'], 'http') !== 0) {
+                            $friend_item['avatar'] = generate_file_url($friend_item['avatar'], $_SESSION['vkey'] ?? '');
+                        }
+                    }
                     response_success($friends);
                     break;
                     
@@ -701,6 +792,10 @@ try {
                     if (empty($friend_id)) response_error('好友ID不能为空');
                     
                     $messages = $message->getChatHistory($current_user_id, $friend_id);
+                    // 为文件消息补充 file_url
+                    if (is_array($messages)) {
+                        foreach ($messages as &$m) { enrich_file_url($m, $conn); }
+                    }
                     response_success($messages);
                     break;
                     
@@ -725,12 +820,23 @@ try {
                     $file_name = $data['file_name'] ?? '';
                     $file_size = $data['file_size'] ?? 0;
                     $file_type = $data['file_type'] ?? '';
+                    $upload_id = $data['upload_id'] ?? null;
+                    $file_url  = $data['file_url']  ?? null;
                     $audio_duration = (int)($data['audio_duration'] ?? 0);
                     
                     if (empty($receiver_id)) response_error('接收者ID不能为空');
-                    if (empty($file_path)) response_error('文件路径不能为空');
                     
-                    $result = $message->sendFileMessage($current_user_id, $receiver_id, $file_path, $file_name, $file_size, $file_type, $audio_duration);
+                    // 新上传流程：通过 uploads.php 上传的文件
+                    if (!empty($upload_id) && !empty($file_url)) {
+                        if (empty($file_name)) response_error('文件名不能为空');
+                        $result = $message->sendFileMessage($current_user_id, $receiver_id, $file_url, $file_name, (int)$file_size, $file_type, $audio_duration, $upload_id, $file_url);
+                    } elseif (!empty($file_path)) {
+                        // 旧版兼容：直接传 file_path
+                        $result = $message->sendFileMessage($current_user_id, $receiver_id, $file_path, $file_name, $file_size, $file_type, $audio_duration);
+                    } else {
+                        response_error('文件信息不能为空');
+                    }
+                    
                     if ($result['success']) {
                         response_success(['message_id' => $result['message_id'], 'audio_duration' => $result['audio_duration'] ?? $audio_duration], '文件发送成功');
                     } else {
@@ -863,6 +969,8 @@ try {
                         if (!empty($msg['message_type']) && $msg['message_type'] === 'file') {
                             $processed_msg['file_info'] = json_decode($msg['file_info'] ?? '{}', true);
                         }
+                        // 为文件消息补充 file_url
+                        enrich_file_url($processed_msg, $conn);
                         // 移除敏感字段
                         if (isset($processed_msg['receiver_id'])) {
                             unset($processed_msg['receiver_id']);
@@ -929,6 +1037,11 @@ try {
                     if (empty($group_id)) response_error('群聊ID不能为空');
                     
                     $members = $group->getGroupMembers($group_id);
+                    foreach ($members as &$member) {
+                        if (!empty($member['avatar']) && strpos($member['avatar'], 'http') !== 0) {
+                            $member['avatar'] = generate_file_url($member['avatar'], $_SESSION['vkey'] ?? '');
+                        }
+                    }
                     response_success($members);
                     break;
                     
@@ -951,6 +1064,10 @@ try {
                     if (empty($group_id)) response_error('群聊ID不能为空');
                     
                     $messages = $group->getGroupMessages($group_id, $current_user_id);
+                    // 为文件消息补充 file_url
+                    if (is_array($messages)) {
+                        foreach ($messages as &$m) { enrich_file_url($m, $conn); }
+                    }
                     response_success($messages);
                     break;
                     
@@ -1233,67 +1350,123 @@ try {
                 if (strpos($path, '..') !== false) {
                     response_error('无效的路径', 400);
                 }
-                
-                // 支持多种路径格式
-                $full_path = '';
-                
-                // 检查路径是否已包含 uploads/
-                if (preg_match('#^uploads/#', $path)) {
-                    $full_path = $base_dir . '/' . $path;
-                } else {
-                    // 尝试在 uploads/ 目录下查找
-                    $full_path = $base_dir . '/uploads/' . $path;
+                $path = ltrim($path, '/');
+
+                $blocked_extensions = ['php', 'php3', 'php4', 'php5', 'phtml', 'pht', 'inc', 'json', 'xml', 'ini', 'conf', 'env', 'htaccess', 'sql', 'log', 'htpasswd', 'git'];
+                $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+                if (in_array($ext, $blocked_extensions)) {
+                    response_error('禁止访问该类型文件', 403);
                 }
-                
-                // 如果文件不存在，尝试其他可能的路径
-                if (!file_exists($full_path) || !is_file($full_path)) {
-                    // 尝试检查 avatars/ 目录（旧版本可能存储在那里）
-                    $alternative_path = $base_dir . '/avatars/' . basename($path);
-                    if (file_exists($alternative_path) && is_file($alternative_path)) {
-                        $full_path = $alternative_path;
-                    } else {
-                        // 尝试检查 uploads/avatars/ 目录
-                        $avatars_path = $base_dir . '/uploads/avatars/' . basename($path);
-                        if (file_exists($avatars_path) && is_file($avatars_path)) {
-                            $full_path = $avatars_path;
-                        } else {
-                            // 尝试检查原始文件名（不带 uploads/ 前缀的情况）
-                            $original_path = $base_dir . '/' . basename($path);
-                            if (file_exists($original_path) && is_file($original_path)) {
-                                $full_path = $original_path;
-                            }
-                        }
+
+                $allowed_prefixes = ['uploads/', 'avatars/', 'new_music/', 'download/'];
+                $is_allowed = false;
+                foreach ($allowed_prefixes as $prefix) {
+                    if (strpos($path, $prefix) === 0) {
+                        $is_allowed = true;
+                        break;
                     }
                 }
-                
-                // 如果仍然找不到文件，返回 404
-                if (!file_exists($full_path) || !is_file($full_path)) {
+                if (!$is_allowed) {
+                    $path = 'uploads/' . $path;
+                }
+
+                $full = $base_dir . '/' . $path;
+                if (!file_exists($full) || !is_file($full)) {
                     http_response_code(404);
                     exit;
                 }
-                
-                $mimes = [
-                    'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png',
-                    'gif' => 'image/gif', 'webp' => 'image/webp', 'svg' => 'image/svg+xml',
-                    'mp4' => 'video/mp4', 'webm' => 'video/webm', 'ogg' => 'video/ogg',
-                    'mp3' => 'audio/mpeg', 'wav' => 'audio/wav', 'pdf' => 'application/pdf'
-                ];
-                $ext = strtolower(pathinfo($full_path, PATHINFO_EXTENSION));
-                $ctype = $mimes[$ext] ?? 'application/octet-stream';
-                header('Content-Type: ' . $ctype);
-                header('Cache-Control: public, max-age=86400');
-                readfile($full_path);
+
+                $real_path = realpath($full);
+                $allowed_base = realpath($base_dir);
+                if (!$real_path || strpos($real_path, $allowed_base) !== 0) {
+                    response_error('禁止访问该文件', 403);
+                }
+
+                // 获取当前用户的 vkey
+                $user_id = $_SESSION['user_id'] ?? 0;
+                if ($user_id <= 0) {
+                    response_error('未登录', 401);
+                }
+                $vkey = get_vkey_by_user_id($user_id, $conn);
+                if (!$vkey) {
+                    response_error('请先生成访问密钥 (vkey)', 403);
+                }
+
+                // 生成签名 URL 并 302 重定向
+                $url = generate_file_url($path, $vkey);
+                header('Location: ' . $url, true, 302);
                 exit;
+            }
+            
+            // file/token: 获取签名 token（返回 JSON，供前端 FileHelper 使用）
+            if ($action === 'token') {
+                $path = trim($data['path'] ?? $_GET['path'] ?? '');
+                if (empty($path)) {
+                    response_error('缺少 path 参数', 400);
+                }
+                $path = str_replace('\\', '/', $path);
+                if (strpos($path, '..') !== false) {
+                    response_error('无效的路径', 400);
+                }
+                $path = ltrim($path, '/');
+                
+                $blocked_extensions = ['php', 'php3', 'php4', 'php5', 'phtml', 'pht', 'inc', 'json', 'xml', 'ini', 'conf', 'env', 'htaccess', 'sql', 'log', 'htpasswd', 'git'];
+                $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+                if (in_array($ext, $blocked_extensions)) {
+                    response_error('禁止访问该类型文件', 403);
+                }
+
+                $allowed_prefixes = ['uploads/', 'avatars/', 'new_music/', 'download/'];
+                $is_allowed = false;
+                foreach ($allowed_prefixes as $prefix) {
+                    if (strpos($path, $prefix) === 0) {
+                        $is_allowed = true;
+                        break;
+                    }
+                }
+                if (!$is_allowed) {
+                    $path = 'uploads/' . $path;
+                }
+                
+                $user_id = $_SESSION['user_id'] ?? 0;
+                if ($user_id <= 0) {
+                    response_error('未登录', 401);
+                }
+                $vkey = get_vkey_by_user_id($user_id, $conn);
+                if (!$vkey) {
+                    response_error('请先生成访问密钥 (vkey)', 403);
+                }
+                
+                $url = generate_proxy_url($path, $vkey);
+                response_success([
+                    'url' => $url,
+                    'expires_in' => FILE_TOKEN_TTL
+                ]);
             }
             response_error("File 模块不支持操作: $action", 404);
             break;
 
         // ------------------------------------------
         // 文件上传模块 (Upload)
+        //   - upload/token: 获取上传令牌（供前端上传到 uploads.php）
+        //   - upload/file:  旧版直接上传（保留兼容）
         // ------------------------------------------
         case 'upload':
             $current_user_id = check_auth();
+            $action = $data['action'] ?? 'file';
             
+            // upload/token: 生成上传令牌
+            if ($action === 'token') {
+                $vkey = get_vkey_by_user_id($current_user_id, $conn);
+                if (!$vkey) {
+                    response_error('请先生成访问密钥 (vkey)', 403);
+                }
+                $upload_id = uniqid('', true) . '_' . time();
+                $auth = generate_upload_token($current_user_id, $vkey, $upload_id);
+                response_success($auth, '上传令牌已生成');
+            }
+            
+            // upload/file: 旧版直接上传（保留兼容）
             if (!isset($_FILES['file'])) {
                 response_error('请选择要上传的文件');
             }

@@ -1,6 +1,7 @@
 <?php
 // 检查系统维护模式
 require_once 'config.php';
+check_api_access();
 if (getConfig('System_Maintenance', 0) == 1) {
     http_response_code(503);
     echo json_encode(['success' => false, 'message' => '系统维护中，请稍后重试']);

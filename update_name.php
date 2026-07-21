@@ -1,14 +1,14 @@
 <?php
-require_once 'security_check.php';
-// 检查系统维护模�?
+// 检查系统维护模式
 require_once 'config.php';
+check_api_access();
 if (getConfig('System_Maintenance', 0) == 1) {
     http_response_code(503);
     echo json_encode(['success' => false, 'message' => '系统维护中，请稍后重试']);
     exit;
 }
 
-// 检查用户是否登�?
+// 检查用户是否登录
 session_start();
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
@@ -16,7 +16,7 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-// 检查请求方�?
+// 检查请求方法
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['success' => false, 'message' => '方法不允许']);
@@ -45,13 +45,7 @@ if (strlen($new_name) > $user_name_max) {
     exit;
 }
 
-// 修复：禁止包含HTML标签或特殊字符
-if (preg_match('/[<>"\']/', $new_name)) {
-    echo json_encode(['success' => false, 'message' => '名称不能包含特殊字符（如 <, >, ", \'）']);
-    exit;
-}
-
-// 检查名称是否为�?
+// 检查名称是否为空
 if (empty($new_name)) {
     echo json_encode(['success' => false, 'message' => '名称不能为空']);
     exit;
@@ -80,7 +74,8 @@ try {
     $stmt = $conn->prepare("UPDATE users SET username = ? WHERE id = ?");
     $stmt->execute([$new_name, $user_id]);
     
-    // 更新会话中的用户�?    $_SESSION['username'] = $new_name;
+    // 更新会话中的用户名
+    $_SESSION['username'] = $new_name;
     
     echo json_encode(['success' => true, 'message' => '名称修改成功']);
 } catch (PDOException $e) {

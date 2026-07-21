@@ -16,6 +16,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
+require_once 'config.php';
+check_api_access();
 require_once 'db.php';
 require_once 'User.php';
 

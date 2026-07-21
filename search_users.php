@@ -2,6 +2,7 @@
 // 开始会话
 session_start();
 require_once 'config.php';
+check_api_access();
 require_once 'db.php';
 require_once 'User.php';
 
@@ -16,6 +17,24 @@ $search_term = isset($_GET['q']) ? trim($_GET['q']) : '';
 
 if (empty($search_term)) {
     echo json_encode(['success' => false, 'message' => '请输入搜索关键词']);
+    exit;
+}
+
+// 禁止传递包含特定字符和文件路径
+$forbidden_chars = ['@', '#', '^', '.', ',', '<', '>', '\\', '/'];
+$forbidden_path = __DIR__ . '\search_users.php';
+
+// 检查是否包含禁止的字符
+foreach ($forbidden_chars as $char) {
+    if (strpos($search_term, $char) !== false) {
+        echo json_encode(['success' => false, 'message' => '搜索关键词包含禁止的字符']);
+        exit;
+    }
+}
+
+// 检查是否包含禁止的文件路径
+if (strpos($search_term, $forbidden_path) !== false) {
+    echo json_encode(['success' => false, 'message' => '搜索关键词包含禁止的文件路径']);
     exit;
 }
 

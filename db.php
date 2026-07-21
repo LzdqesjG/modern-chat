@@ -1,4 +1,8 @@
 <?php
+if (basename($_SERVER['SCRIPT_NAME'] ?? '') === basename(__FILE__)) {
+    http_response_code(404);
+    exit;
+}
 require_once 'config.php';
 
 class Database {

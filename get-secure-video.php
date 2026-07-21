@@ -4,6 +4,7 @@
 
 require_once 'config.php';
 require_once 'db.php';
+check_api_access();
 
 // 检查用户是否登录
 if (session_status() === PHP_SESSION_NONE) {
@@ -141,32 +142,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         if ($token_data) {
             $file_path = $token_data['file_path'];
             
+            $blocked_extensions = ['php', 'php3', 'php4', 'php5', 'phtml', 'pht', 'inc', 'json', 'xml', 'ini', 'conf', 'env', 'htaccess', 'sql', 'log', 'htpasswd', 'git'];
+            $ext = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
+            if (in_array($ext, $blocked_extensions)) {
+                http_response_code(403);
+                echo json_encode(['error' => '禁止访问该类型文件']);
+                exit;
+            }
+
+            $base_dir = realpath(__DIR__);
+            $real_path = realpath($file_path);
+            $allowed_base = realpath(__DIR__ . '/uploads');
+            
+            if (!$real_path || strpos($real_path, $allowed_base) !== 0) {
+                http_response_code(403);
+                echo json_encode(['error' => '禁止访问该文件']);
+                exit;
+            }
+            
             // 检查文件是否存在
             if (file_exists($file_path)) {
-                // 获取文件信息
-                $file_info = pathinfo($file_path);
-                $file_name = $file_info['basename'];
-                $file_size = filesize($file_path);
-                
-                // 设置响应头
-                header('Content-Description: File Transfer');
-                header('Content-Type: video/' . $file_info['extension']);
-                
-                // 根据是否是下载请求设置不同的 Content-Disposition
-                if ($is_download) {
-                    header('Content-Disposition: attachment; filename="' . $file_name . '"');
-                } else {
-                    header('Content-Disposition: inline; filename="' . $file_name . '"');
+                // 转为相对路径
+                $relative = str_replace('\\', '/', $real_path);
+                if (strpos($relative, $base_dir) === 0) {
+                    $relative = ltrim(substr($relative, strlen($base_dir)), '/');
                 }
                 
-                header('Content-Transfer-Encoding: binary');
-                header('Expires: 0');
-                header('Cache-Control: must-revalidate');
-                header('Pragma: public');
-                header('Content-Length: ' . $file_size);
+                // 获取用户 vkey 并生成签名 URL，302 重定向到 list.php
+                $user_id = $_SESSION['user_id'];
+                $vkey = get_vkey_by_user_id($user_id, $conn);
+                if (!$vkey) {
+                    http_response_code(500);
+                    echo json_encode(['error' => '请先生成访问密钥 (vkey)']);
+                    exit;
+                }
                 
-                // 输出文件内容
-                readfile($file_path);
+                $url = generate_file_url($relative, $vkey);
+                if ($is_download) {
+                    // 对于下载，仍然在此处理（追加 download 参数不方便通过 list.php）
+                    // 直接读取输出
+                    $file_info = pathinfo($file_path);
+                    $file_name = $file_info['basename'];
+                    $file_size = filesize($file_path);
+                    
+                    header('Content-Description: File Transfer');
+                    header('Content-Type: application/octet-stream');
+                    header('Content-Disposition: attachment; filename="' . $file_name . '"');
+                    header('Content-Transfer-Encoding: binary');
+                    header('Expires: 0');
+                    header('Cache-Control: must-revalidate');
+                    header('Pragma: public');
+                    header('Content-Length: ' . $file_size);
+                    readfile($file_path);
+                } else {
+                    header('Location: ' . $url, true, 302);
+                }
                 exit;
             } else {
                 http_response_code(404);

@@ -104,6 +104,61 @@ if ($resource === 'check_api') {
     exit;
 }
 
+// ═══════════════════════════════════════════════════════
+// 辅助函数：为文件消息补充 file_url（走 file 子域名）
+// ═══════════════════════════════════════════════════════
+function enrich_file_url_pc(&$msg, $conn) {
+    if (empty($msg['file_path'])) return;
+    if (!empty($msg['file_url']) && strpos($msg['file_url'], 'https://') === 0) return;
+    
+    // 预先获取 vkey（后续构建代理 URL 需要）
+    $vkey = null;
+    try {
+        if (function_exists('get_vkey_by_user_id')) {
+            $uid = $_SESSION['user_id'] ?? 0;
+            if ($uid > 0) $vkey = get_vkey_by_user_id($uid, $conn);
+        }
+    } catch (Exception $e) {}
+    
+    if (!empty($msg['upload_id'])) {
+        $stored_name = $msg['stored_name'] ?? basename($msg['file_path']);
+        if ($vkey && function_exists('generate_proxy_url_with_id')) {
+            $msg['file_url'] = generate_proxy_url_with_id($msg['upload_id'], $stored_name, $vkey);
+        } else {
+            $msg['file_url'] = 'https://files.modern-chat.top/list.php?id=' . urlencode($msg['upload_id']) 
+                             . '&file=' . urlencode($stored_name);
+        }
+        return;
+    }
+    
+    try {
+        $stmt = $conn->prepare("SELECT upload_id, stored_name FROM file_uploads WHERE file_path = ? LIMIT 1");
+        $stmt->execute([$msg['file_path']]);
+        $row = $stmt->fetch();
+        if ($row) {
+            $msg['upload_id'] = $row['upload_id'];
+            if ($vkey && function_exists('generate_proxy_url_with_id')) {
+                $msg['file_url'] = generate_proxy_url_with_id($row['upload_id'], $row['stored_name'], $vkey);
+            } else {
+                $msg['file_url'] = 'https://files.modern-chat.top/list.php?id=' . urlencode($row['upload_id']) 
+                                 . '&file=' . urlencode($row['stored_name']);
+            }
+            return;
+        }
+    } catch (Exception $e) {}
+    
+    if ($vkey && function_exists('generate_proxy_url')) {
+        $relative_path = $msg['file_path'];
+        foreach ([realpath(__DIR__ . '/..') . '/', realpath(__DIR__) . '/', '/www/wwwroot/'] as $base) {
+            if (strpos($relative_path, $base) === 0) {
+                $relative_path = substr($relative_path, strlen($base));
+                break;
+            }
+        }
+        $msg['file_url'] = generate_proxy_url(ltrim($relative_path, '/'), $vkey);
+    }
+}
+
 // 如果没有 resource 参数，返回错误信息
 if (empty($resource)) {
     http_response_code(404);
@@ -380,8 +435,18 @@ function formatDuration($seconds) {
 // ==========================================
 
 try {
-    // 使用已定义的变量
-    $data = $request_data;
+    // 获取业务数据
+    // 支持两种格式：
+    // 1. PC客户端格式：{resource, action, data: {...}}
+    // 2. 手机端APP格式：{resource, action, ...data}
+    if (isset($request_data['data']) && is_array($request_data['data'])) {
+        // PC客户端格式：数据在 data 字段中
+        $data = $request_data['data'];
+    } else {
+        // 手机端APP格式：数据直接在根级别，排除 resource 和 action
+        $data = $request_data;
+        unset($data['resource'], $data['action']);
+    }
     
     // 全局参数
     $id = $data['id'] ?? null;
@@ -518,12 +583,36 @@ try {
                         $_SESSION['username'] = $result['user']['username'];
                         $_SESSION['email'] = $result['user']['email'];
                         
-                        // 移除敏感信息
-                        unset($result['user']['password']);
-                        unset($result['user']['security_question']);
-                        unset($result['user']['security_answer']);
-                        unset($result['user']['reset_token']);
-                        unset($result['user']['reset_token_expires']);
+                        // 确保用户有 vkey（用于 list.php 文件访问认证）
+                        $vkey = $result['user']['vkey'] ?? null;
+                        if (empty($vkey)) {
+                            $vkey = bin2hex(random_bytes(32));
+                            $stmt = $conn->prepare("UPDATE users SET vkey = ? WHERE id = ?");
+                            $stmt->execute([$vkey, $result['user']['id']]);
+                        }
+                        $result['user']['vkey'] = $vkey;
+                        
+                        // 移除敏感信息（vkey 现在需要返回给客户端，已从列表中移除）
+                        $sensitive_fields = [
+                            'password',
+                            'security_question',
+                            'security_answer',
+                            'reset_token',
+                            'reset_token_expires',
+                            'key',           // 认证令牌
+                            'token',         // 认证令牌
+                            'api_key',       // API密钥
+                            'access_token',  // 访问令牌
+                            'refresh_token', // 刷新令牌
+                            'secret',        // 密钥
+                            'salt',          // 盐值
+                        ];
+                        
+                        foreach ($sensitive_fields as $field) {
+                            if (isset($result['user'][$field])) {
+                                unset($result['user'][$field]);
+                            }
+                        }
                         
                         // 更新状态为在线
                         $user->updateStatus($result['user']['id'], 'online');
@@ -760,11 +849,17 @@ try {
             
             switch ($action) {
                 case 'get_info':
-                    // 默认获取当前用户，也可获取指定用户
-                    $target_user_id = $data['user_id'] ?? $current_user_id;
+                    // 只允许获取当前登录用户的信息（修复IDOR漏洞）
+                    // 禁止通过user_id参数获取其他用户信息
+                    $target_user_id = $current_user_id;
                     $user_info = $user->getUserById($target_user_id);
                     
                     if ($user_info) {
+                        // 处理头像URL
+                        if (!empty($user_info['avatar']) && strpos($user_info['avatar'], 'http') !== 0) {
+                            $user_info['avatar'] = generate_file_url($user_info['avatar'], $_SESSION['vkey'] ?? '');
+                        }
+                        
                         // 处理手机号显示格式：前3位+****+后4位
                         if (isset($user_info['phone']) && !empty($user_info['phone'])) {
                             $phone = $user_info['phone'];
@@ -773,12 +868,28 @@ try {
                             }
                         }
                         
-                        // 移除敏感信息
-                        unset($user_info['password']);
-                        unset($user_info['security_question']);
-                        unset($user_info['security_answer']);
-                        unset($user_info['reset_token']);
-                        unset($user_info['reset_token_expires']);
+                        // 移除敏感信息（扩展敏感字段列表）
+                        $sensitive_fields = [
+                            'password',
+                            'security_question',
+                            'security_answer',
+                            'reset_token',
+                            'reset_token_expires',
+                            'key',           // 认证令牌
+                            'token',         // 认证令牌
+                            'api_key',       // API密钥
+                            'access_token',  // 访问令牌
+                            'refresh_token', // 刷新令牌
+                            'secret',        // 密钥
+                            'salt',          // 盐值
+                        ];
+                        
+                        foreach ($sensitive_fields as $field) {
+                            if (isset($user_info[$field])) {
+                                unset($user_info[$field]);
+                            }
+                        }
+                        
                         response_success($user_info);
                     } else {
                         response_error('用户不存在', 404);
@@ -852,6 +963,11 @@ try {
                         }
                         error_log("[API-PC] 用户搜索: keyword=$keyword, user_id=$current_user_id");
                         $users = $user->searchUsers($keyword, $current_user_id);
+                        foreach ($users as &$user_item) {
+                            if (!empty($user_item['avatar']) && strpos($user_item['avatar'], 'http') !== 0) {
+                                $user_item['avatar'] = generate_file_url($user_item['avatar'], $_SESSION['vkey'] ?? '');
+                            }
+                        }
                         error_log("[API-PC] 用户搜索结果: " . count($users) . " 条");
                         response_success($users);
                     } catch (Exception $e) {
@@ -924,6 +1040,11 @@ try {
             switch ($action) {
                 case 'list':
                     $friends = $friend->getFriends($current_user_id);
+                    foreach ($friends as &$friend_item) {
+                        if (!empty($friend_item['avatar']) && strpos($friend_item['avatar'], 'http') !== 0) {
+                            $friend_item['avatar'] = generate_file_url($friend_item['avatar'], $_SESSION['vkey'] ?? '');
+                        }
+                    }
                     response_success($friends);
                     break;
                     
@@ -1011,6 +1132,8 @@ try {
                         $processed_msg['created_at'] = $msg['created_at'] ?? '';
                         // 确保avatar字段存在
                         $processed_msg['avatar'] = $msg['avatar'] ?? null;
+                        // 为文件消息补充 file_url
+                        enrich_file_url_pc($processed_msg, $conn);
                         $processed_messages[] = $processed_msg;
                     }
                     
@@ -1042,16 +1165,27 @@ try {
                     $file_name = $data['file_name'] ?? '';
                     $file_size = $data['file_size'] ?? 0;
                     $file_type = $data['file_type'] ?? '';
+                    $upload_id = $data['upload_id'] ?? null;
+                    $file_url  = $data['file_url']  ?? null;
                     $audio_duration = (int)($data['audio_duration'] ?? 0);
                     
                     if (empty($receiver_id)) response_error('接收者ID不能为空');
-                    if (empty($file_path)) response_error('文件路径不能为空');
                     
                     $receiver_id = preg_replace('/^(friend|group)_/', '', $receiver_id);
                     
                     if (!is_numeric($receiver_id)) response_error('无效的接收者ID');
                     
-                    $result = $message->sendFileMessage($current_user_id, $receiver_id, $file_path, $file_name, $file_size, $file_type, $audio_duration);
+                    // 新流程：通过 uploads.php 上传的文件
+                    if (!empty($upload_id) && !empty($file_url)) {
+                        if (empty($file_name)) response_error('文件名不能为空');
+                        $result = $message->sendFileMessage($current_user_id, $receiver_id, $file_url, $file_name, (int)$file_size, $file_type, $audio_duration, $upload_id, $file_url);
+                    } elseif (!empty($file_path)) {
+                        // 旧版兼容
+                        $result = $message->sendFileMessage($current_user_id, $receiver_id, $file_path, $file_name, $file_size, $file_type, $audio_duration);
+                    } else {
+                        response_error('文件信息不能为空');
+                    }
+                    
                     if ($result['success']) {
                         response_success(['message_id' => $result['message_id'], 'audio_duration' => $result['audio_duration'] ?? $audio_duration], '文件发送成功');
                     } else {
@@ -1184,6 +1318,8 @@ try {
                         if (!empty($msg['message_type']) && $msg['message_type'] === 'file') {
                             $processed_msg['file_info'] = json_decode($msg['file_info'] ?? '{}', true);
                         }
+                        // 为文件消息补充 file_url
+                        enrich_file_url_pc($processed_msg, $conn);
                         // 移除敏感字段
                         if (isset($processed_msg['receiver_id'])) {
                             unset($processed_msg['receiver_id']);
@@ -1323,6 +1459,11 @@ try {
                     if (empty($group_id)) response_error('群聊ID不能为空');
                     
                     $members = $group->getGroupMembers($group_id);
+                    foreach ($members as &$member) {
+                        if (!empty($member['avatar']) && strpos($member['avatar'], 'http') !== 0) {
+                            $member['avatar'] = generate_file_url($member['avatar'], $_SESSION['vkey'] ?? '');
+                        }
+                    }
                     response_success($members);
                     break;
                     
@@ -1353,6 +1494,8 @@ try {
                         $processed_msg['sender_name'] = $msg['sender_username'] ?? ($msg['sender_name'] ?? '未知');
                         // 确保avatar字段存在
                         $processed_msg['avatar'] = $msg['avatar'] ?? null;
+                        // 为文件消息补充 file_url
+                        enrich_file_url_pc($processed_msg, $conn);
                         $processed_messages[] = $processed_msg;
                     }
                     response_success($processed_messages);
@@ -1744,67 +1887,97 @@ try {
                 if (strpos($path, '..') !== false) {
                     response_error('无效的路径', 400);
                 }
-                
-                // 支持多种路径格式
-                $full_path = '';
-                
-                // 检查路径是否已包含 uploads/
-                if (preg_match('#^uploads/#', $path)) {
-                    $full_path = $base_dir . '/' . $path;
-                } else {
-                    // 尝试在 uploads/ 目录下查找
-                    $full_path = $base_dir . '/uploads/' . $path;
-                }
-                
-                // 如果文件不存在，尝试其他可能的路径
-                if (!file_exists($full_path) || !is_file($full_path)) {
-                    // 尝试检查 avatars/ 目录（旧版本可能存储在那里）
-                    $alternative_path = $base_dir . '/avatars/' . basename($path);
-                    if (file_exists($alternative_path) && is_file($alternative_path)) {
-                        $full_path = $alternative_path;
-                    } else {
-                        // 尝试检查 uploads/avatars/ 目录
-                        $avatars_path = $base_dir . '/uploads/avatars/' . basename($path);
-                        if (file_exists($avatars_path) && is_file($avatars_path)) {
-                            $full_path = $avatars_path;
-                        } else {
-                            // 尝试检查原始文件名（不带 uploads/ 前缀的情况）
-                            $original_path = $base_dir . '/' . basename($path);
-                            if (file_exists($original_path) && is_file($original_path)) {
-                                $full_path = $original_path;
-                            }
-                        }
+                $path = ltrim($path, '/');
+
+                // 查找文件（与 list.php 逻辑一致）
+                $found = false;
+                $check_paths = [
+                    $path,
+                    'uploads/' . $path,
+                    'avatars/' . basename($path),
+                    'uploads/avatars/' . basename($path),
+                ];
+                foreach ($check_paths as $try) {
+                    $full = $base_dir . '/' . $try;
+                    if (file_exists($full) && is_file($full)) {
+                        $found = true;
+                        $resolved = $try;
+                        break;
                     }
                 }
-                
-                // 如果仍然找不到文件，返回 404
-                if (!file_exists($full_path) || !is_file($full_path)) {
+
+                if (!$found) {
                     http_response_code(404);
                     exit;
                 }
-                
-                $mimes = [
-                    'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png',
-                    'gif' => 'image/gif', 'webp' => 'image/webp', 'svg' => 'image/svg+xml',
-                    'mp4' => 'video/mp4', 'webm' => 'video/webm', 'ogg' => 'video/ogg',
-                    'mp3' => 'audio/mpeg', 'wav' => 'audio/wav', 'pdf' => 'application/pdf'
-                ];
-                $ext = strtolower(pathinfo($full_path, PATHINFO_EXTENSION));
-                $ctype = $mimes[$ext] ?? 'application/octet-stream';
-                header('Content-Type: ' . $ctype);
-                header('Cache-Control: public, max-age=86400');
-                readfile($full_path);
+
+                // 获取当前用户的 vkey
+                $user_id = $_SESSION['user_id'] ?? 0;
+                if ($user_id <= 0) {
+                    response_error('未登录', 401);
+                }
+                $vkey = get_vkey_by_user_id($user_id, $conn);
+                if (!$vkey) {
+                    response_error('请先生成访问密钥 (vkey)', 403);
+                }
+
+                // 生成签名 URL 并 302 重定向
+                $url = generate_file_url($resolved, $vkey);
+                header('Location: ' . $url, true, 302);
                 exit;
+            }
+            
+            // file/token: 获取签名 token（返回 JSON，供前端 FileHelper 使用）
+            if ($action === 'token') {
+                $path = trim($data['path'] ?? $_GET['path'] ?? '');
+                if (empty($path)) {
+                    response_error('缺少 path 参数', 400);
+                }
+                $path = str_replace('\\', '/', $path);
+                if (strpos($path, '..') !== false) {
+                    response_error('无效的路径', 400);
+                }
+                $path = ltrim($path, '/');
+                
+                $user_id = $_SESSION['user_id'] ?? 0;
+                if ($user_id <= 0) {
+                    response_error('未登录', 401);
+                }
+                $vkey = get_vkey_by_user_id($user_id, $conn);
+                if (!$vkey) {
+                    response_error('请先生成访问密钥 (vkey)', 403);
+                }
+                
+                $url = generate_proxy_url($path, $vkey);
+                response_success([
+                    'url' => $url,
+                    'expires_in' => FILE_TOKEN_TTL
+                ]);
             }
             response_error("File 模块不支持操作: $action", 404);
             break;
 
         // ------------------------------------------
         // 文件上传模块 (Upload)
+        //   - upload/token: 获取上传令牌（供前端上传到 uploads.php）
+        //   - upload/file:  旧版直接上传（保留兼容）
         // ------------------------------------------
         case 'upload':
             $current_user_id = check_auth();
+            $action = $data['action'] ?? 'file';
             
+            // upload/token: 生成上传令牌
+            if ($action === 'token') {
+                $vkey = get_vkey_by_user_id($current_user_id, $conn);
+                if (!$vkey) {
+                    response_error('请先生成访问密钥 (vkey)', 403);
+                }
+                $upload_id = uniqid('', true) . '_' . time();
+                $auth = generate_upload_token($current_user_id, $vkey, $upload_id);
+                response_success($auth, '上传令牌已生成');
+            }
+            
+            // upload/file: 旧版直接上传（保留兼容）
             if (!isset($_FILES['file'])) {
                 response_error('请选择要上传的文件');
             }
@@ -2047,26 +2220,27 @@ try {
                 case 'confirm':
                     // 确认扫码登录
                     $qid = $data['qid'] ?? '';
-                    $user_id = $data['user_id'] ?? 0;
-                    $username = $data['user'] ?? '';
+                    $vkey = $data['vkey'] ?? '';
                     
                     if (empty($qid)) {
                         response_error('登录标识不能为空');
                     }
                     
-                    // 如果传递的是用户名，先查询用户ID
-                    if (empty($user_id) && !empty($username)) {
-                        $stmt = $conn->prepare("SELECT id FROM users WHERE username = ?");
-                        $stmt->execute([$username]);
-                        $user_data = $stmt->fetch();
-                        if ($user_data) {
-                            $user_id = $user_data['id'];
-                        }
+                    if (empty($vkey)) {
+                        response_error('认证密钥不能为空');
                     }
                     
-                    if (empty($user_id)) {
-                        response_error('用户信息无效');
+                    // 通过vkey验证用户身份（防止冒充）
+                    $stmt = $conn->prepare("SELECT id, username FROM users WHERE vkey = ? AND vkey_expire > NOW()");
+                    $stmt->execute([$vkey]);
+                    $user_data = $stmt->fetch();
+                    
+                    if (!$user_data) {
+                        response_error('认证密钥无效或已过期');
                     }
+                    
+                    $user_id = $user_data['id'];
+                    $username = $user_data['username'];
                     
                     // 检查qid是否存在且未过期
                     $stmt = $conn->prepare("SELECT * FROM scan_login WHERE qid = ? AND expire_at > NOW() AND status IN ('pending', 'scanned')");
@@ -2077,11 +2251,36 @@ try {
                         response_error('登录二维码无效或已过期');
                     }
                     
+                    // 生成 access_key 并保存到数据库
+                    $accessKey = bin2hex(random_bytes(32));
+                    $ipAddress = $_SERVER['REMOTE_ADDR'] ?? '未知';
+                    $deviceName = 'Mobile APP';
+                    
+                    // 检查是否已存在该用户的记录
+                    $stmt = $conn->prepare("SELECT id FROM pc_keys WHERE user_id = ? AND device_name = ?");
+                    $stmt->execute([$user_id, $deviceName]);
+                    
+                    if ($stmt->fetch()) {
+                        // 如果存在，更新
+                        $stmt = $conn->prepare("UPDATE pc_keys SET access_key = ?, ip_address = ?, created_at = NOW(), is_active = TRUE WHERE user_id = ? AND device_name = ?");
+                        $stmt->execute([$accessKey, $ipAddress, $user_id, $deviceName]);
+                    } else {
+                        // 不存在，插入
+                        $stmt = $conn->prepare("INSERT INTO pc_keys (user_id, access_key, device_name, ip_address, created_at) VALUES (?, ?, ?, ?, NOW())");
+                        $stmt->execute([$user_id, $accessKey, $deviceName, $ipAddress]);
+                    }
+                    
                     // 更新状态为成功
                     $stmt = $conn->prepare("UPDATE scan_login SET status = 'success', user_id = ? WHERE qid = ?");
                     $stmt->execute([$user_id, $qid]);
                     
-                    response_success([], '登录确认成功');
+                    // 返回用户信息和access_key给APP（包含vkey用于文件访问）
+                    response_success([
+                        'user_id' => $user_id,
+                        'username' => $username,
+                        'access_key' => $accessKey,
+                        'vkey' => $vkey
+                    ], '登录确认成功');
                     break;
                     
                 case 'status':
@@ -2105,25 +2304,51 @@ try {
                     }
                     
                     if ($token_data['status'] === 'success') {
-                        // 登录成功，设置session
+                        // 登录成功，设置 session
                         if (session_status() === PHP_SESSION_NONE) {
                             session_start();
                         }
                         $_SESSION['user_id'] = $token_data['user_id'];
                         $_SESSION['username'] = $token_data['username'];
                         
+                        // 获取用户 vkey（用于文件访问）
+                        $vkey = get_vkey_by_user_id($token_data['user_id'], $conn);
+                        if (empty($vkey)) {
+                            $vkey = bin2hex(random_bytes(32));
+                            $stmt = $conn->prepare("UPDATE users SET vkey = ? WHERE id = ?");
+                            $stmt->execute([$vkey, $token_data['user_id']]);
+                        }
+                        
+                        // 生成新的 access_key 并更新（覆盖原有的）
+                        $accessKey = bin2hex(random_bytes(32));
+                        $ipAddress = $_SERVER['REMOTE_ADDR'] ?? '未知';
+                        $deviceName = 'PC Client';
+                        
+                        // 检查是否已存在该用户的 PC 端记录
+                        $stmt = $conn->prepare("SELECT id FROM pc_keys WHERE user_id = ? AND device_name = ?");
+                        $stmt->execute([$token_data['user_id'], $deviceName]);
+                        
+                        if ($stmt->fetch()) {
+                            // 如果存在，更新 access_key
+                            $stmt = $conn->prepare("UPDATE pc_keys SET access_key = ?, ip_address = ?, created_at = NOW(), is_active = TRUE WHERE user_id = ? AND device_name = ?");
+                            $stmt->execute([$accessKey, $ipAddress, $token_data['user_id'], $deviceName]);
+                        } else {
+                            // 不存在，插入新记录
+                            $stmt = $conn->prepare("INSERT INTO pc_keys (user_id, access_key, device_name, ip_address, created_at) VALUES (?, ?, ?, ?, NOW())");
+                            $stmt->execute([$token_data['user_id'], $accessKey, $deviceName, $ipAddress]);
+                        }
+                        
                         // 更新状态为已使用
                         $stmt = $conn->prepare("UPDATE scan_login SET status = 'used' WHERE qid = ?");
                         $stmt->execute([$qid]);
                         
+                        // 返回 access_key 和 vkey
                         response_success([
                             'status' => 'success',
-                            'user' => [
-                                'id' => $token_data['user_id'],
-                                'username' => $token_data['username'],
-                                'email' => $token_data['email'],
-                                'avatar' => $token_data['avatar']
-                            ]
+                            'access_key' => $accessKey,
+                            'vkey' => $vkey,
+                            'user_id' => $token_data['user_id'],
+                            'username' => $token_data['username']
                         ]);
                     } else {
                         response_success([
@@ -2208,6 +2433,212 @@ try {
                         'expires_at' => $expire_at,
                         'qr_url' => 'https://chat.hyacine.com.cn/chat/scan_login.php?qid=' . $qid
                     ]);
+                    break;
+                    
+                case 'userinfo':
+                    // 通过vkey获取用户信息（手机端确认登录后获取用户信息）
+                    $vkey = $data['vkey'] ?? '';
+                    
+                    if (empty($vkey)) {
+                        response_error('认证密钥不能为空');
+                    }
+                    
+                    // 通过vkey验证用户身份
+                    $stmt = $conn->prepare("SELECT id, username, email, avatar FROM users WHERE vkey = ? AND vkey_expire > NOW() AND is_deleted = FALSE");
+                    $stmt->execute([$vkey]);
+                    $user_data = $stmt->fetch();
+                    
+                    if (!$user_data) {
+                        response_error('认证密钥无效或已过期');
+                    }
+                    
+                    response_success([
+                        'user' => [
+                            'id' => $user_data['id'],
+                            'username' => $user_data['username'],
+                            'email' => $user_data['email'],
+                            'avatar' => $user_data['avatar']
+                        ]
+                    ]);
+                    break;
+                    
+                default:
+                    response_error('参数不存在', 404);
+            }
+            break;
+        
+        // ------------------------------------------
+        // 设备会话管理模块 (Device Sessions)
+        // ------------------------------------------
+        case 'device_session':
+            switch ($action) {
+                case 'create':
+                    // 创建设备会话（登录成功后调用）
+                    $user_id = $data['user_id'] ?? '';
+                    $device_type = $data['device_type'] ?? '';
+                    $device_name = $data['device_name'] ?? '';
+                    $ip_address = $_SERVER['REMOTE_ADDR'] ?? '未知';
+                    $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                    
+                    if (empty($user_id)) {
+                        response_error('用户ID不能为空');
+                    }
+                    
+                    if (!in_array($device_type, ['PC', 'Web', 'Mobile'])) {
+                        response_error('设备类型无效');
+                    }
+                    
+                    // 生成会话token
+                    $session_token = bin2hex(random_bytes(32));
+                    
+                    // 创建设备会话记录
+                    $stmt = $conn->prepare("INSERT INTO device_sessions (user_id, session_token, device_type, device_name, ip_address, user_agent) VALUES (?, ?, ?, ?, ?, ?)");
+                    $stmt->execute([$user_id, $session_token, $device_type, $device_name, $ip_address, $user_agent]);
+                    
+                    response_success([
+                        'session_token' => $session_token,
+                        'device_type' => $device_type
+                    ], '设备会话创建成功');
+                    break;
+                    
+                case 'list':
+                    // 获取用户的所有设备会话列表
+                    $vkey = $data['vkey'] ?? '';
+                    
+                    if (empty($vkey)) {
+                        response_error('认证密钥不能为空');
+                    }
+                    
+                    // 通过vkey验证用户身份
+                    $stmt = $conn->prepare("SELECT id FROM users WHERE vkey = ? AND vkey_expire > NOW() AND is_deleted = FALSE");
+                    $stmt->execute([$vkey]);
+                    $user_data = $stmt->fetch();
+                    
+                    if (!$user_data) {
+                        response_error('认证密钥无效或已过期');
+                    }
+                    
+                    $user_id = $user_data['id'];
+                    
+                    // 获取用户的所有活跃设备会话
+                    $stmt = $conn->prepare("SELECT id, device_type, device_name, ip_address, login_time, last_active FROM device_sessions WHERE user_id = ? AND is_active = TRUE ORDER BY login_time DESC");
+                    $stmt->execute([$user_id]);
+                    $sessions = $stmt->fetchAll();
+                    
+                    // 格式化时间
+                    foreach ($sessions as &$session) {
+                        $session['login_time'] = $session['login_time'] ? date('Y-m-d H:i:s', strtotime($session['login_time'])) : '';
+                        $session['last_active'] = $session['last_active'] ? date('Y-m-d H:i:s', strtotime($session['last_active'])) : '';
+                    }
+                    
+                    response_success([
+                        'sessions' => $sessions
+                    ], '获取成功');
+                    break;
+                    
+                case 'logout':
+                    // 退出指定设备登录
+                    $vkey = $data['vkey'] ?? '';
+                    $session_id = $data['session_id'] ?? '';
+                    
+                    if (empty($vkey)) {
+                        response_error('认证密钥不能为空');
+                    }
+                    
+                    if (empty($session_id)) {
+                        response_error('会话ID不能为空');
+                    }
+                    
+                    // 通过vkey验证用户身份
+                    $stmt = $conn->prepare("SELECT id FROM users WHERE vkey = ? AND vkey_expire > NOW() AND is_deleted = FALSE");
+                    $stmt->execute([$vkey]);
+                    $user_data = $stmt->fetch();
+                    
+                    if (!$user_data) {
+                        response_error('认证密钥无效或已过期');
+                    }
+                    
+                    $user_id = $user_data['id'];
+                    
+                    // 检查会话是否属于当前用户
+                    $stmt = $conn->prepare("SELECT id, device_type FROM device_sessions WHERE id = ? AND user_id = ? AND is_active = TRUE");
+                    $stmt->execute([$session_id, $user_id]);
+                    $session_data = $stmt->fetch();
+                    
+                    if (!$session_data) {
+                        response_error('会话不存在或已失效');
+                    }
+                    
+                    // 标记会话为非活跃状态
+                    $stmt = $conn->prepare("UPDATE device_sessions SET is_active = FALSE WHERE id = ?");
+                    $stmt->execute([$session_id]);
+                    
+                    response_success([
+                        'session_id' => $session_id,
+                        'device_type' => $session_data['device_type']
+                    ], '已强制退出该设备登录');
+                    break;
+                    
+                case 'logout_all':
+                    // 退出所有其他设备登录（保留当前设备）
+                    $vkey = $data['vkey'] ?? '';
+                    $current_session_token = $data['current_session_token'] ?? '';
+                    
+                    if (empty($vkey)) {
+                        response_error('认证密钥不能为空');
+                    }
+                    
+                    // 通过vkey验证用户身份
+                    $stmt = $conn->prepare("SELECT id FROM users WHERE vkey = ? AND vkey_expire > NOW() AND is_deleted = FALSE");
+                    $stmt->execute([$vkey]);
+                    $user_data = $stmt->fetch();
+                    
+                    if (!$user_data) {
+                        response_error('认证密钥无效或已过期');
+                    }
+                    
+                    $user_id = $user_data['id'];
+                    
+                    // 标记所有其他会话为非活跃状态
+                    if (!empty($current_session_token)) {
+                        $stmt = $conn->prepare("UPDATE device_sessions SET is_active = FALSE WHERE user_id = ? AND session_token != ? AND is_active = TRUE");
+                        $stmt->execute([$user_id, $current_session_token]);
+                    } else {
+                        $stmt = $conn->prepare("UPDATE device_sessions SET is_active = FALSE WHERE user_id = ? AND is_active = TRUE");
+                        $stmt->execute([$user_id]);
+                    }
+                    
+                    response_success([], '已强制退出所有其他设备登录');
+                    break;
+                    
+                case 'verify':
+                    // 验证会话token是否有效
+                    $session_token = $data['session_token'] ?? '';
+                    
+                    if (empty($session_token)) {
+                        response_error('会话token不能为空');
+                    }
+                    
+                    $stmt = $conn->prepare("SELECT user_id, device_type, is_active FROM device_sessions WHERE session_token = ?");
+                    $stmt->execute([$session_token]);
+                    $session_data = $stmt->fetch();
+                    
+                    if (!$session_data) {
+                        response_error('会话无效或已过期');
+                    }
+                    
+                    if (!$session_data['is_active']) {
+                        response_error('你已在手机上退出登录');
+                    }
+                    
+                    // 更新最后活跃时间
+                    $stmt = $conn->prepare("UPDATE device_sessions SET last_active = NOW() WHERE session_token = ?");
+                    $stmt->execute([$session_token]);
+                    
+                    response_success([
+                        'user_id' => $session_data['user_id'],
+                        'device_type' => $session_data['device_type']
+                    ], '会话验证成功');
                     break;
                     
                 default:

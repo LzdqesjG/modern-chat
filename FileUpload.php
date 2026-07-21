@@ -1,4 +1,8 @@
 <?php
+if (basename($_SERVER['SCRIPT_NAME'] ?? '') === basename(__FILE__)) {
+    http_response_code(404);
+    exit;
+}
 require_once 'config.php';
 require_once 'db.php';
 
@@ -10,7 +14,8 @@ class FileUpload {
     
     public function __construct($db) {
         $this->conn = $db;
-        $this->uploadDir = UPLOAD_DIR;
+        // 修改为新的上传目录：files.modern-chat.top/uploads/
+        $this->uploadDir = __DIR__ . '/files.modern-chat.top/uploads/';
         $this->maxFileSize = MAX_FILE_SIZE;
         $this->allowedTypes = ALLOWED_FILE_TYPES;
         
@@ -23,6 +28,12 @@ class FileUpload {
     // 上传文件
     public function upload($file, $user_id) {
         try {
+            // 预先获取 vkey（用于构建代理 URL，避免前端 fetch 跨域）
+            $vkey = null;
+            if (function_exists('get_vkey_by_user_id')) {
+                $vkey = get_vkey_by_user_id($user_id, $this->conn);
+            }
+
             // 检查文件是否有错误
             if ($file['error'] !== UPLOAD_ERR_OK) {
                 $error_msg = $this->getErrorMessage($file['error']);
@@ -97,44 +108,56 @@ class FileUpload {
             
             // 检查是否已存在相同SHA256的文件
             $stmt = $this->conn->prepare(
-                "SELECT * FROM files WHERE file_sha256 = ?"
+                "SELECT * FROM file_uploads WHERE file_sha256 = ? ORDER BY created_at DESC LIMIT 1"
             );
             $stmt->execute([$file_sha256]);
             $existing_file = $stmt->fetch();
             
             if ($existing_file) {
                 // 文件已存在，返回秒传信息
+                // file_path 使用 {upload_id}/{stored_name} 相对格式，供 generate_file_url() / 前端 FileHelper 使用
+                $relative_path = $existing_file['upload_id'] . '/' . $existing_file['stored_name'];
+                if ($vkey && function_exists('generate_proxy_url_with_id')) {
+                    $file_url = generate_proxy_url_with_id($existing_file['upload_id'], $existing_file['stored_name'], $vkey);
+                } else {
+                    $file_url = 'https://files.modern-chat.top/list.php?id=' . urlencode($existing_file['upload_id']) . '&file=' . urlencode($existing_file['stored_name']);
+                }
+                
                 return [
                     'success' => true,
-                    'file_path' => $existing_file['file_path'],
+                    'file_path' => $relative_path,
                     'file_name' => $original_name,
                     'file_size' => $existing_file['file_size'],
                     'mime_type' => $existing_file['mime_type'],
                     'stored_name' => $existing_file['stored_name'],
+                    'upload_id' => $existing_file['upload_id'],
+                    'file_url' => $file_url,
                     'is_duplicate' => true,
                     'message' => '文件重复，已秒传！'
                 ];
             }
             
-            // 确保上传目录存在
-            if (!is_dir($this->uploadDir)) {
-                if (!mkdir($this->uploadDir, 0755, true)) {
-                    error_log("Failed to create upload directory: " . $this->uploadDir);
+            // 生成唯一的 upload_id
+            $upload_id = uniqid('', true) . '_' . time();
+            $upload_dir = $this->uploadDir . $upload_id . '/';
+            
+            // 创建上传子目录
+            if (!is_dir($upload_dir)) {
+                if (!mkdir($upload_dir, 0755, true)) {
+                    error_log("Failed to create upload directory: " . $upload_dir);
                     return ['success' => false, 'message' => '上传目录创建失败'];
                 }
             }
             
             // 检查上传目录是否可写
-            if (!is_writable($this->uploadDir)) {
-                error_log("Upload directory not writable: " . $this->uploadDir);
+            if (!is_writable($upload_dir)) {
+                error_log("Upload directory not writable: " . $upload_dir);
                 return ['success' => false, 'message' => '上传目录不可写'];
             }
             
             // 生成唯一文件名
-            $original_name = basename($file['name']);
-            $extension = pathinfo($original_name, PATHINFO_EXTENSION);
             $stored_name = uniqid() . '_' . time() . '.' . $extension;
-            $file_path = $this->uploadDir . $stored_name;
+            $file_path = $upload_dir . $stored_name;
             
             // 移动文件到上传目录
             if (!move_uploaded_file($file['tmp_name'], $file_path)) {
@@ -142,20 +165,32 @@ class FileUpload {
                 return ['success' => false, 'message' => '文件上传失败: 无法移动文件'];
             }
             
-            // 保存文件信息到数据库（包含SHA256）
+            // 保存文件信息到数据库（包含SHA256）— file_uploads 表存完整物理路径（如秒传/去重用）
             $stmt = $this->conn->prepare(
-                "INSERT INTO files (user_id, original_name, stored_name, file_path, file_size, mime_type, file_sha256) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?)"
+                "INSERT INTO file_uploads (user_id, upload_id, original_name, stored_name, file_path, file_size, mime_type, file_sha256) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
             );
-            $stmt->execute([$user_id, $original_name, $stored_name, $file_path, $file['size'], $mime_type, $file_sha256]);
+            $stmt->execute([$user_id, $upload_id, $original_name, $stored_name, $file_path, $file['size'], $mime_type, $file_sha256]);
             
+            // 构建文件访问 URL（优先走同域代理）
+            if ($vkey && function_exists('generate_proxy_url_with_id')) {
+                $file_url = generate_proxy_url_with_id($upload_id, $stored_name, $vkey);
+            } else {
+                $file_url = 'https://files.modern-chat.top/list.php?id=' . urlencode($upload_id) . '&file=' . urlencode($stored_name);
+            }
+            
+            // file_path 返回 {upload_id}/{stored_name} 相对格式
+            // —— generate_file_url() 和前端 FileHelper.getFileUrl() 都直接按 / 拆分即可
+            $relative_path = $upload_id . '/' . $stored_name;
             return [
                 'success' => true,
-                'file_path' => $file_path,
+                'file_path' => $relative_path,
                 'file_name' => $original_name,
                 'file_size' => $file['size'],
                 'mime_type' => $mime_type,
                 'stored_name' => $stored_name,
+                'upload_id' => $upload_id,
+                'file_url' => $file_url,
                 'is_duplicate' => false
             ];
         } catch(PDOException $e) {

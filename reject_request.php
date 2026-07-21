@@ -3,6 +3,7 @@
 session_start();
 
 require_once 'config.php';
+check_api_access();
 require_once 'db.php';
 require_once 'Friend.php';
 

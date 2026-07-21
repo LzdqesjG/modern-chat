@@ -7,6 +7,7 @@ if (file_exists(__DIR__ . '/lock')) {
 require_once 'config.php';
 require_once 'db.php';
 require_once 'User.php';
+check_api_access();
 
 // 检查是否是POST请求
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -26,7 +27,7 @@ try {
     if ($restrict_registration) {
         // 检查数据库连接是否成功
         if (!$conn) {
-            throw new Exception("Database connection failed");
+            throw new Exception("数据库连接失败");
         }
         
         // 检查该IP地址已经注册的用户数�?        
@@ -136,8 +137,8 @@ if (empty($phone) || !preg_match('/^1[3-9]\d{9}$/', $phone)) {
             $errors[] = '请完成验证码验证';
         } else {
             // 调用极验服务器端API验证
-            $captchaId = '55574dfff9c40f2efeb5a26d6d188245';
-            $captchaKey = 'e69583b3ddcc2b114388b5e1dc213cfd';
+            $captchaId = getConfig('geetest_captcha_id', '55574dfff9c40f2efeb5a26d6d188245');
+            $captchaKey = getConfig('geetest_captcha_key', 'e69583b3ddcc2b114388b5e1dc213cfd');
             
             // 生成签名
             $sign_token = hash_hmac('sha256', $lot_number, $captchaKey);
@@ -161,34 +162,26 @@ $ch = curl_init();
             $response = curl_exec($ch);
             $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             
-            // 调试信息，记录到日志
-            error_log("Geetest 4.0 validation - URL: $apiUrl");
-            error_log("Geetest 4.0 validation - Params: " . json_encode($params));
-            error_log("Geetest 4.0 validation - HTTP Code: $http_code");
-            error_log("Geetest 4.0 validation - Response: $response");
-            
-            // 检查响�?            
+            // 检查响应            
 if ($http_code === 200) {
                 $result = json_decode($response, true);
-                error_log("Geetest 4.0 validation - Decoded Result: " . json_encode($result));
                 
                 if ($result && $result['status'] === 'success' && $result['result'] === 'success') {
                     // 验证成功
                 } else {
                     $errors[] = '验证码验证失败，请重新验证';
-                    $reason = isset($result['reason']) ? $result['reason'] : 'unknown';
-                    error_log("Geetest 4.0 validation failed - Result: " . json_encode($result) . ", Reason: $reason");
+                    error_log("Geetest 4.0 validation failed");
                 }
             } else {
                 // API请求失败，暂时跳过验证（可能是网络问题）
-                error_log("Geetest 4.0 API request failed - HTTP Code: $http_code, Response: $response");
+                error_log("Geetest 4.0 API request failed");
             }
         }
     }
 
     // 如果有错误，重定向回注册页面
     if (!empty($errors)) {
-        $error_message = implode("\n", $errors);
+        $error_message = implode('<br>', $errors);
         header("Location: register.php?error=" . urlencode($error_message));
         exit;
     }
@@ -222,7 +215,8 @@ $email_verify = false;
                 // 设置cURL选项
                 curl_setopt($ch, CURLOPT_URL, $api_url);
                 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // 禁用SSL验证，根据实际情况调�?                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false); // 禁用SSL主机验证，根据实际情况调�?                
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);                
                 if ($request_method === 'POST') {
                     curl_setopt($ch, CURLOPT_POST, true);
                     curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($request_data));
@@ -306,6 +300,11 @@ $email_verify = false;
         }
     }
 
+    // 检查数据库连接是否成功
+    if (!$conn) {
+        throw new Exception("数据库连接失败");
+    }
+    
     // 创建User实例
     $user = new User($conn);
 
@@ -361,15 +360,10 @@ $email_verify = false;
     }
 
 } catch (Throwable $e) {
-    // 捕获所有异常和错误
     $errorMessage = "System Error: " . $e->getMessage() . " in " . $e->getFile() . " on line " . $e->getLine();
     error_log($errorMessage);
     error_log("Stack trace: " . $e->getTraceAsString());
     
-    // 如果是开发环境，可以显示详细错误，生产环境只显示通用错误
-    // 
-header("Location: register.php?error=" . urlencode("系统发生严重错误，请联系管理员查看日志"));
-    // 为了调试方便，暂时显示详细错误（注意：生产环境应改为上面的通用提示�?    
-header("Location: register.php?error=" . urlencode("系统错误: " . $e->getMessage()));
+    header("Location: register.php?error=" . urlencode("系统发生严重错误，请联系管理员查看日志"));
     exit;
 }

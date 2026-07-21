@@ -1,4 +1,8 @@
 <?php
+if (basename($_SERVER['SCRIPT_NAME'] ?? '') === basename(__FILE__)) {
+    http_response_code(404);
+    exit;
+}
 require_once 'db.php';
 require_once 'User.php';
 
@@ -389,13 +393,15 @@ class Group {
         $file_size = isset($file_info['file_size']) ? $file_info['file_size'] : null;
         $file_type = isset($file_info['file_type']) ? $file_info['file_type'] : null;
         $audio_duration = (int)(isset($file_info['audio_duration']) ? $file_info['audio_duration'] : 0);
+        $upload_id = isset($file_info['upload_id']) ? $file_info['upload_id'] : null;
+        $file_url = isset($file_info['file_url']) ? $file_info['file_url'] : null;
         if ($audio_duration < 0) $audio_duration = 0;
         
         try {
             if ($file_path) {
-                // 发送文件消息，包含 file_type、audio_duration（语音时长秒）
-                $stmt = $this->conn->prepare("INSERT INTO group_messages (group_id, sender_id, content, file_path, file_name, file_size, file_type, audio_duration, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())");
-                $result = $stmt->execute([$group_id, $sender_id, $content, $file_path, $file_name, $file_size, $file_type, $audio_duration]);
+                // 发送文件消息，包含 file_type、audio_duration（语音时长秒）、upload_id、file_url
+                $stmt = $this->conn->prepare("INSERT INTO group_messages (group_id, sender_id, content, file_path, file_name, file_size, file_type, audio_duration, upload_id, file_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+                $result = $stmt->execute([$group_id, $sender_id, $content, $file_path, $file_name, $file_size, $file_type, $audio_duration, $upload_id, $file_url]);
             } else {
                 // 发送文本消息，只使用数据库中实际存在的字段
                 $stmt = $this->conn->prepare("INSERT INTO group_messages (group_id, sender_id, content, created_at) VALUES (?, ?, ?, NOW())");
