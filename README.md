@@ -31,7 +31,7 @@
 
    ### 已部署好的体验网站
 
-  - https://chat.hyacine.com.cn/chat
+  - https://chat.modern-chat.top
   - 如果觉得项目好可以向开发者赞助（自愿）
   - wx:
     <p>
