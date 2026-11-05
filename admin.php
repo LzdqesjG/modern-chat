@@ -505,7 +505,7 @@ try {
 // 验证管理员密码
 function validateAdminPassword($password, $current_user, $conn) {
     // 调试日志
-    error_log("validateAdminPassword called with password: '" . $password . "' for user ID: " . $current_user['id']);
+    error_log("validateAdminPassword called for user ID: " . $current_user['id']);
     
     // 获取当前管理员的密码哈希
     $sql = "SELECT password FROM users WHERE id = ?";
@@ -515,7 +515,6 @@ function validateAdminPassword($password, $current_user, $conn) {
     
     error_log("User found: " . ($user ? "Yes" : "No"));
     if ($user) {
-        error_log("Password hash in database: '" . $user['password'] . "'");
         error_log("Password verify result: " . (password_verify($password, $user['password']) ? "True" : "False"));
     }
     
@@ -1133,7 +1132,6 @@ if (isset($_POST['action']) && in_array($_POST['action'], [
                     // 更新用户密码
                 // 调试：记录密码更新
                 error_log("Updating password for user: " . $request['username']);
-                error_log("Hashed password: " . $request['new_password']);
                 $stmt = $conn->prepare("UPDATE users SET password = ? WHERE username = ?");
                 $stmt->execute([$request['new_password'], $request['username']]);
                 // 调试：记录更新结果
